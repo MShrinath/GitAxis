@@ -239,65 +239,69 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   registerGitHubCommands(context, operationManager, repoDiscovery);
 
   // 6. Handle Workspace Folder Changes & Auto Profile Matching (Section 2)
+  const promptUnboundRepo = async (repo: GitRepository) => {
+    const config = vscode.workspace.getConfiguration('gitaxis');
+    if (!config.get<boolean>('autoDetectProfile', true)) return;
+
+    const boundId = await profileManager.getAssociation(repo.path);
+    if (boundId) return; // Already explicitly bound
+
+    if (promptedRepos.has(repo.path)) return; // Already prompted during this session
+    promptedRepos.add(repo.path);
+
+    const matchResult = await profileManager.matchProfile({
+      repositoryPath: repo.path,
+      remotes: repo.remotes,
+    });
+
+    let candidate: any | undefined;
+    if (matchResult.recommendedProfileId) {
+      candidate = await profileManager.getProfile(matchResult.recommendedProfileId);
+    }
+    if (!candidate) {
+      candidate = await profileManager.getActiveProfile();
+    }
+    if (!candidate) {
+      const all = await profileManager.getProfiles();
+      candidate = all[0];
+    }
+
+    if (candidate) {
+      const alwaysBtn = 'Always for this repo';
+      const justOnceBtn = 'Just this time';
+      const chooseAnotherBtn = 'Choose another';
+
+      vscode.window
+        .showInformationMessage(
+          `Use "${candidate.name}" (${candidate.git.email}) for repository "${repo.name}"?`,
+          alwaysBtn,
+          justOnceBtn,
+          chooseAnotherBtn
+        )
+        .then(async choice => {
+          if (choice === alwaysBtn) {
+            await profileManager.switchProfile(candidate.id, repo.path);
+            await profileManager.associateRepository(repo.path, candidate.id);
+            await refreshAll();
+          } else if (choice === justOnceBtn) {
+            await profileManager.applyIdentityToRepository(candidate, repo.path);
+            await refreshAll();
+          } else if (choice === chooseAnotherBtn) {
+            await vscode.commands.executeCommand('gitaxis.switchProfile');
+          }
+        });
+    }
+  };
+
   const checkWorkspaceProfiles = async () => {
     const folders = vscode.workspace.workspaceFolders;
     if (!folders || folders.length === 0) return;
 
-    const config = vscode.workspace.getConfiguration('gitaxis');
-    if (!config.get<boolean>('autoDetectProfile', true)) return;
-
     for (const folder of folders) {
       const folderPath = folder.uri.fsPath;
       const repo = await repoDiscovery.detectRepository(folderPath);
-      if (!repo) continue;
-
-      const boundId = await profileManager.getAssociation(repo.path);
-      if (boundId) continue; // Already explicitly bound
-
-      if (promptedRepos.has(repo.path)) continue; // Already prompted during this session
-      promptedRepos.add(repo.path);
-
-      const matchResult = await profileManager.matchProfile({
-        repositoryPath: repo.path,
-        remotes: repo.remotes,
-      });
-
-      let candidate: any | undefined;
-      if (matchResult.recommendedProfileId) {
-        candidate = await profileManager.getProfile(matchResult.recommendedProfileId);
-      }
-      if (!candidate) {
-        candidate = await profileManager.getActiveProfile();
-      }
-      if (!candidate) {
-        const all = await profileManager.getProfiles();
-        candidate = all[0];
-      }
-
-      if (candidate) {
-        const alwaysBtn = 'Always for this repo';
-        const justOnceBtn = 'Just this time';
-        const chooseAnotherBtn = 'Choose another';
-
-        vscode.window
-          .showInformationMessage(
-            `Use "${candidate.name}" (${candidate.git.email}) for repository "${repo.name}"?`,
-            alwaysBtn,
-            justOnceBtn,
-            chooseAnotherBtn
-          )
-          .then(async choice => {
-            if (choice === alwaysBtn) {
-              await profileManager.switchProfile(candidate.id, repo.path);
-              await profileManager.associateRepository(repo.path, candidate.id);
-              await refreshAll();
-            } else if (choice === justOnceBtn) {
-              await profileManager.applyIdentityToRepository(candidate, repo.path);
-              await refreshAll();
-            } else if (choice === chooseAnotherBtn) {
-              await vscode.commands.executeCommand('gitaxis.switchProfile');
-            }
-          });
+      if (repo) {
+        await promptUnboundRepo(repo);
       }
     }
   };
@@ -326,10 +330,21 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }, 1000);
   }
 
-  // Listen to active editor changes to keep status bar aligned in multi-root workspaces
+  // Listen to active editor changes to keep status bar and sidebar aligned in multi-root workspaces
   context.subscriptions.push(
-    vscode.window.onDidChangeActiveTextEditor(() => {
-      updateStatusBar().catch(err => logger.error(`Status bar update error: ${String(err)}`));
+    vscode.window.onDidChangeActiveTextEditor(async () => {
+      try {
+        await refreshAll();
+        const currentPath = getActiveRepositoryPath();
+        if (currentPath) {
+          const repo = await repoDiscovery.detectRepository(currentPath);
+          if (repo) {
+            await promptUnboundRepo(repo);
+          }
+        }
+      } catch (err) {
+        logger.error(`Active editor switch error: ${String(err)}`);
+      }
     })
   );
 

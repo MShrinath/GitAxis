@@ -190,16 +190,17 @@ export class ProfileManager {
       // 5. SSH Key Alignment: If the profile authentication is SSH with an sshKeyPath, set core.sshCommand to use that key; unset it if switching to a non-SSH profile.
       const rawSshKeyPath = (profile.authentication as { sshKeyPath?: string })?.sshKeyPath?.trim();
       if (profile.authentication.type === 'ssh' && rawSshKeyPath) {
-        let resolvedKeyPath = rawSshKeyPath;
+        const cleanKeyPath = rawSshKeyPath.replace(/^["']|["']$/g, '').trim();
+        let resolvedKeyPath = cleanKeyPath;
         if (resolvedKeyPath.startsWith('~')) {
           resolvedKeyPath = path.join(os.homedir(), resolvedKeyPath.slice(1));
         }
         const normalizedKeyPath = Platform.normalizePath(resolvedKeyPath);
         let sshCommand: string;
-        if (rawSshKeyPath.startsWith('ssh ')) {
-          sshCommand = rawSshKeyPath.includes('-o IdentitiesOnly=yes')
-            ? rawSshKeyPath
-            : `${rawSshKeyPath} -o IdentitiesOnly=yes`;
+        if (cleanKeyPath.startsWith('ssh ')) {
+          sshCommand = cleanKeyPath.includes('-o IdentitiesOnly=yes')
+            ? cleanKeyPath
+            : `${cleanKeyPath} -o IdentitiesOnly=yes`;
         } else {
           sshCommand = `ssh -i "${normalizedKeyPath}" -o IdentitiesOnly=yes`;
         }

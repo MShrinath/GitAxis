@@ -4,10 +4,7 @@ import { OperationManager } from '../operations/operationManager';
 import { createOperation, RepositoryStatus } from '../contracts';
 
 import { ProfileManager } from '../profiles/profileManager';
-
-function getWorkspaceRepoPath(): string | undefined {
-  return vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-}
+import { getWorkspaceRepoPath } from '../utils/workspace';
 
 export function registerRepositoryCommands(
   context: vscode.ExtensionContext,

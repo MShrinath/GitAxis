@@ -4,10 +4,7 @@ import { OperationManager } from '../operations/operationManager';
 import { createOperation } from '../contracts';
 import { Validation } from '../utils/validation';
 import { TagInfo } from '../git/tag';
-
-function getWorkspaceRepoPath(): string | undefined {
-  return vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-}
+import { getWorkspaceRepoPath } from '../utils/workspace';
 
 export function registerTagCommands(
   context: vscode.ExtensionContext,

@@ -442,5 +442,68 @@ describe('Multi-Account Core (v0.5.0)', () => {
       assert.strictEqual(deniedRes.success, false);
       assert.ok(deniedRes.message.includes('Permission denied (publickey)'));
     });
+
+    it('AccountVerifier: should verify HTTPS remote authentication using git ls-remote', async () => {
+      let lsRemoteCalledWith: string[] = [];
+      mockGitClient.exec = async (args: string[]) => {
+        lsRemoteCalledWith = args;
+        if (args[0] === 'ls-remote' && args[1] === '--heads') {
+          return { stdout: 'd41d8cd98f00b204e9800998ecf8427e refs/heads/main\n', stderr: '' };
+        }
+        return { stdout: '', stderr: '' };
+      };
+
+      const profile = await profileManager.createProfile({
+        name: 'HttpsProfile',
+        git: { name: 'HTTPS Dev', email: 'dev@https.org' },
+        github: { host: 'github.com', username: 'httpsuser' },
+        authentication: { type: 'credential-manager' },
+      });
+
+      remotesMap.set('C:/repos/https-repo', [
+        { name: 'origin', host: 'github.com', owner: 'httpsuser', repository: 'repo', fetchUrl: 'https://github.com/httpsuser/repo.git' },
+      ]);
+
+      const verifier = new AccountVerifier(secretStore, mockGitClient);
+      const res = await verifier.verifyProfile(profile, 'C:/repos/https-repo');
+      assert.strictEqual(res.success, true);
+      assert.strictEqual(lsRemoteCalledWith[0], 'ls-remote');
+      assert.strictEqual(lsRemoteCalledWith[1], '--heads');
+      assert.ok(res.message.includes('Git remote authenticated successfully'));
+    });
+
+    it('ProfileMatcher: should match remote owner against allowed orgs and wildcards', async () => {
+      const orgProfile = await profileManager.createProfile({
+        name: 'EnterpriseOrgProfile',
+        git: { name: 'Org Dev', email: 'dev@corp.com' },
+        github: { host: 'github.com', username: 'orgdev', orgs: ['mega-corp', 'corp-*'] },
+        authentication: { type: 'none' },
+      });
+
+      const res = await profileManager.resolveProfileForRepository('C:/repos/corp-app', {
+        remotes: [{ name: 'origin', host: 'github.com', owner: 'corp-tools', repository: 'app' }],
+      });
+      assert.strictEqual(res?.source, 'matcher');
+      assert.strictEqual(res?.profile.id, orgProfile.id);
+    });
+
+    it('SSH: should strip surrounding quotes from sshKeyPath', async () => {
+      const sshProfile = await profileManager.createProfile({
+        name: 'ssh-quoted',
+        git: { name: 'SSH Quoted', email: 'quoted@test.org' },
+        github: { host: 'github.com', username: 'quoteduser' },
+        authentication: {
+          type: 'ssh',
+          sshKeyPath: '"/custom/path with spaces/id_rsa"',
+        },
+      });
+
+      await profileManager.switchProfile(sshProfile.id, 'C:/repos/ssh-project');
+      const configuredSsh = localConfigs.get('core.sshCommand');
+      assert.ok(configuredSsh);
+      // Ensure no double double-quotes like ""/custom/...""
+      assert.ok(!configuredSsh.includes('""'));
+      assert.ok(configuredSsh.includes('-o IdentitiesOnly=yes'));
+    });
   });
 });

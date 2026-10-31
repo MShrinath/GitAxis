@@ -15,6 +15,10 @@ export class Platform {
   }
 
   public static normalizePath(filePath: string): string {
-    return path.normalize(filePath).replace(/\\/g, '/');
+    const normalized = path.normalize(filePath).replace(/\\/g, '/');
+    if (Platform.isWindows()) {
+      return normalized.replace(/^[a-zA-Z]:/, m => m.toUpperCase());
+    }
+    return normalized;
   }
 }

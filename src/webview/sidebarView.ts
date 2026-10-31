@@ -9,6 +9,7 @@ import { Platform } from '../utils/platform';
 import { Validation } from '../utils/validation';
 import { logger } from '../utils/logger';
 import { AccountVerifier } from '../auth/accountVerifier';
+import { getWorkspaceRepoPath } from '../utils/workspace';
 
 const ALLOWED_COMMANDS = new Set([
   'refresh',
@@ -387,7 +388,7 @@ export class SidebarViewProvider implements vscode.WebviewViewProvider {
           }
 
           case 'linkToRepo': {
-            const workspaceFolder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+            const workspaceFolder = getWorkspaceRepoPath();
             if (!workspaceFolder) {
               vscode.window.showWarningMessage('No repository workspace open to link.');
               break;
@@ -411,7 +412,7 @@ export class SidebarViewProvider implements vscode.WebviewViewProvider {
 
 
           case 'unlinkRepo': {
-            const workspaceFolder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+            const workspaceFolder = getWorkspaceRepoPath();
             if (workspaceFolder) {
               const repo = await this.repoDiscovery.detectRepository(workspaceFolder);
               const targetPath = repo?.path || Platform.normalizePath(workspaceFolder);
@@ -529,10 +530,7 @@ export class SidebarViewProvider implements vscode.WebviewViewProvider {
     let repoUrl: string | undefined;
     let linkedProfileId: string | undefined;
 
-    const activeUri = vscode.window.activeTextEditor?.document.uri;
-    const folderPath = activeUri && activeUri.scheme === 'file'
-      ? vscode.workspace.getWorkspaceFolder(activeUri)?.uri.fsPath
-      : vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    const folderPath = getWorkspaceRepoPath();
 
     if (folderPath) {
       repository = await this.repoDiscovery.detectRepository(folderPath);

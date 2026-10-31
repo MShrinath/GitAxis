@@ -2,10 +2,7 @@ import * as crypto from 'crypto';
 import * as vscode from 'vscode';
 import { OperationManager } from '../operations/operationManager';
 import { createOperation } from '../contracts';
-
-function getWorkspaceRepoPath(): string | undefined {
-  return vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-}
+import { getActiveWorkspaceRepoPath } from '../utils/workspace';
 
 export function registerCommitCommands(
   context: vscode.ExtensionContext,
@@ -15,7 +12,7 @@ export function registerCommitCommands(
   // Commit
   context.subscriptions.push(
     vscode.commands.registerCommand('gitaxis.commit', async () => {
-      const repoPath = getWorkspaceRepoPath();
+      const repoPath = await getActiveWorkspaceRepoPath();
       if (!repoPath) return;
 
       const message = await vscode.window.showInputBox({

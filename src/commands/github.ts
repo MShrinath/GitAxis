@@ -3,10 +3,7 @@ import * as vscode from 'vscode';
 import { OperationManager } from '../operations/operationManager';
 import { RepositoryDiscovery } from '../discovery/repositoryDiscovery';
 import { createOperation } from '../contracts';
-
-function getWorkspaceRepoPath(): string | undefined {
-  return vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-}
+import { getWorkspaceRepoPath } from '../utils/workspace';
 
 export function registerGitHubCommands(
   context: vscode.ExtensionContext,

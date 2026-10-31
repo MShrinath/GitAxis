@@ -68,9 +68,31 @@ export class ProfileMatcher {
             }
           }
 
-          // Check remote owner vs profile github username
-          if (profile.github?.username && remote.owner) {
-            if (profile.github.username.toLowerCase() === remote.owner.toLowerCase()) {
+          // Check remote owner vs profile github username and allowed orgs
+          if (remote.owner) {
+            const lowerRemote = remote.owner.toLowerCase();
+            let matchedOwner = false;
+            if (profile.github?.username && profile.github.username.toLowerCase() === lowerRemote) {
+              matchedOwner = true;
+            }
+            if (!matchedOwner && profile.github?.orgs) {
+              for (const org of profile.github.orgs) {
+                const lowerOrg = org.trim().toLowerCase();
+                if (lowerOrg === lowerRemote) {
+                  matchedOwner = true;
+                  break;
+                }
+                if (lowerOrg.includes('*')) {
+                  const regex = new RegExp('^' + lowerOrg.replace(/\*/g, '.*') + '$');
+                  if (regex.test(lowerRemote)) {
+                    matchedOwner = true;
+                    break;
+                  }
+                }
+              }
+            }
+
+            if (matchedOwner) {
               score += 45;
               if (!reasons.includes('remote-owner')) {
                 reasons.push('remote-owner');

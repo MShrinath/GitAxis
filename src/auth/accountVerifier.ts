@@ -254,20 +254,21 @@ export class AccountVerifier {
         const remotes = await this.gitClient.getRemotes(repoPath);
         const origin = remotes.find(r => r.name === 'origin') || remotes[0];
         if (origin && origin.fetchUrl) {
-          const { stdout } = await this.gitClient.exec(['ls-remote', '--get-url', origin.name], {
+          await this.gitClient.exec(['ls-remote', '--heads', origin.name], {
             cwd: repoPath,
-            timeout: 8000,
+            timeout: 10000,
           });
           return {
             success: true,
             login: expectedUsername,
-            message: `Git remote URL verified for ${origin.name} (${stdout.trim()})`,
+            message: `Git remote authenticated successfully for ${origin.name} (${origin.fetchUrl})`,
           };
         }
       } catch (err) {
         return {
           success: false,
-          message: `Git remote check failed: ${String(err)}`,
+          login: expectedUsername,
+          message: `Git remote authentication failed: ${String(err)}`,
         };
       }
     }

@@ -2,10 +2,7 @@ import * as crypto from 'crypto';
 import * as vscode from 'vscode';
 import { OperationManager } from '../operations/operationManager';
 import { createOperation } from '../contracts';
-
-function getWorkspaceRepoPath(): string | undefined {
-  return vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-}
+import { getWorkspaceRepoPath } from '../utils/workspace';
 
 export function registerSyncCommands(
   context: vscode.ExtensionContext,
