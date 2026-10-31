@@ -22,6 +22,15 @@ jobs:
           node-version: 20
           cache: 'npm'
 
+      - name: Tag must match package.json version
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          PKG="v$(node -p "require('./package.json').version")"
+          if [ "$PKG" != "$GITHUB_REF_NAME" ]; then
+            echo "Tag $GITHUB_REF_NAME does not match package.json version $PKG"
+            exit 1
+          fi
+
       - name: Install dependencies
         run: npm ci
 
@@ -32,9 +41,35 @@ jobs:
         run: npx --yes @vscode/vsce package --no-dependencies
 
       - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
           files: "*.vsix"
           generate_release_notes: true
           draft: false
           prerelease: false
+
+  # Publishes the exact .vsix attached to the GitHub Release above.
+  # Runs only for version tags, never for plain workflow_dispatch runs.
+  # Auth is OIDC (Marketplace Trusted Publishing): no PAT or secret is stored.
+  publish:
+    needs: release
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    # environment: marketplace   # optional approval gate; must match the policy if enabled
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Download the VSIX from the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release download "${{ github.ref_name }}" --repo "${{ github.repository }}" --pattern '*.vsix'
+
+      - name: Publish to VS Code Marketplace
+        run: npx --yes @vscode/vsce publish --packagePath ./*.vsix --oidc
