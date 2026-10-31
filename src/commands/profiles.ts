@@ -5,13 +5,31 @@ import { GitClient } from '../git/gitClient';
 import { AuthenticationType, CreateProfileInput, GitIdentityScope } from '../contracts';
 import { Validation } from '../utils/validation';
 
+import { AccountVerifier } from '../auth/accountVerifier';
+
 export function registerProfileCommands(
   context: vscode.ExtensionContext,
   profileManager: ProfileManager,
   systemDiscovery: SystemDiscovery,
   gitClient: GitClient,
-  onProfileChanged?: () => void
+  onProfileChanged?: () => void,
+  accountVerifier?: AccountVerifier
 ): void {
+  // Helper: get current repository root
+  const getCurrentRepoRoot = async (): Promise<string | undefined> => {
+    const activeUri = vscode.window.activeTextEditor?.document.uri;
+    const folder = activeUri && activeUri.scheme === 'file'
+      ? vscode.workspace.getWorkspaceFolder(activeUri)?.uri.fsPath
+      : vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    if (!folder) return undefined;
+    try {
+      if (await gitClient.isRepository(folder)) {
+        return await gitClient.getRoot(folder);
+      }
+    } catch {}
+    return folder;
+  };
+
   // 1. Switch Profile
   context.subscriptions.push(
     vscode.commands.registerCommand('gitaxis.switchProfile', async (targetProfileId?: string) => {
@@ -25,23 +43,78 @@ export function registerProfileCommands(
         return;
       }
 
+      const repoRoot = await getCurrentRepoRoot();
+      const boundId = repoRoot ? await profileManager.getAssociation(repoRoot) : undefined;
+      const resolved = repoRoot ? await profileManager.resolveProfileForRepository(repoRoot) : undefined;
+      const active = resolved?.profile || (await profileManager.getActiveProfile());
+
       let selectedId = targetProfileId;
 
       if (!selectedId) {
-        const active = await profileManager.getActiveProfile();
-        const items = profiles.map(p => ({
-          label: `${p.id === active?.id ? '$(check) ' : ''}${p.name}`,
-          description: `${p.git.name} <${p.git.email}>`,
-          detail: `GitHub: ${p.github?.username || 'None'} · Auth: ${p.authentication.type} · Scope: ${p.git.scope}`,
-          profileId: p.id,
-        }));
+        type ProfileQuickPickItem = vscode.QuickPickItem & { profileId?: string; action?: string };
+        const items: ProfileQuickPickItem[] = [];
+
+        // Profile items
+        items.push({ label: 'Profiles', kind: vscode.QuickPickItemKind.Separator });
+        for (const p of profiles) {
+          const isCurrent = p.id === active?.id;
+          const isBound = p.id === boundId;
+          const label = `${isCurrent ? '$(check) ' : ''}${p.name}${isBound ? ' (Bound to repo)' : ''}`;
+          items.push({
+            label,
+            description: `${p.git.name} <${p.git.email}>`,
+            detail: `GitHub: @${p.github?.username || 'none'} · Auth: ${p.authentication.type} · Scope: ${p.git.scope}`,
+            profileId: p.id,
+          });
+        }
+
+        // Actions
+        items.push({ label: 'Repository Actions', kind: vscode.QuickPickItemKind.Separator });
+        items.push({
+          label: '$(link) Bind Current Repo to Profile...',
+          description: repoRoot ? 'Set default profile for this repository' : 'No repo open',
+          action: 'bind',
+        });
+        if (boundId) {
+          items.push({
+            label: '$(link-external) Unbind Current Repo',
+            description: 'Remove profile association for this repository',
+            action: 'unbind',
+          });
+        }
+        items.push({
+          label: '$(pass) Verify Account Authentication...',
+          description: 'Test credentials with GitHub',
+          action: 'verify',
+        });
+        items.push({
+          label: '$(plus) Create New Profile',
+          action: 'create',
+        });
 
         const selected = await vscode.window.showQuickPick(items, {
-          placeHolder: 'Select a Git/GitHub Profile',
+          placeHolder: repoRoot ? `Current profile: ${active?.name || 'None'}` : 'Select a Git/GitHub Profile or Action',
         });
         if (!selected) return;
+
+        if (selected.action === 'bind') {
+          await vscode.commands.executeCommand('gitaxis.bindRepo');
+          return;
+        } else if (selected.action === 'unbind') {
+          await vscode.commands.executeCommand('gitaxis.unbindRepo');
+          return;
+        } else if (selected.action === 'verify') {
+          await vscode.commands.executeCommand('gitaxis.verifyAccount');
+          return;
+        } else if (selected.action === 'create') {
+          await vscode.commands.executeCommand('gitaxis.createProfile');
+          return;
+        }
+
         selectedId = selected.profileId;
       }
+
+      if (!selectedId) return;
 
       const confirmGlobalGitChange = async (): Promise<boolean> => {
         const continueBtn = 'Continue';
@@ -53,30 +126,13 @@ export function registerProfileCommands(
         return choice === continueBtn;
       };
 
-      const activeUri = vscode.window.activeTextEditor?.document.uri;
-      const workspaceFolder = activeUri
-        ? vscode.workspace.getWorkspaceFolder(activeUri)?.uri.fsPath
-        : vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-      await profileManager.switchProfile(selectedId, workspaceFolder, confirmGlobalGitChange);
+      const switched = await profileManager.switchProfile(selectedId, repoRoot, confirmGlobalGitChange);
 
-      // Ask to associate with current workspace if open
-      if (workspaceFolder) {
-        const currentAssoc = await profileManager.getAssociation(workspaceFolder);
-        if (currentAssoc !== selectedId) {
-          const profile = await profileManager.getProfile(selectedId);
-          const assocAction = `Remember for this folder`;
-          vscode.window.showInformationMessage(
-            `Switched to profile "${profile?.name}". Remember this profile for this repository?`,
-            assocAction
-          ).then(action => {
-            if (action === assocAction) {
-              profileManager.associateRepository(workspaceFolder, selectedId!);
-            }
-          });
-        }
-      }
-
-      vscode.window.showInformationMessage(`Active profile switched.`);
+      vscode.window.showInformationMessage(
+        repoRoot
+          ? `Switched repository to profile "${switched.name}".`
+          : `Active profile switched to "${switched.name}".`
+      );
       onProfileChanged?.();
     })
   );
@@ -358,6 +414,129 @@ export function registerProfileCommands(
             } catch (err) {
               vscode.window.showErrorMessage(`Failed to import profile: ${String(err)}`);
             }
+          }
+        }
+      );
+    })
+  );
+
+  // 4. Bind Current Repo to Profile
+  context.subscriptions.push(
+    vscode.commands.registerCommand('gitaxis.bindRepo', async () => {
+      const repoRoot = await getCurrentRepoRoot();
+      if (!repoRoot) {
+        vscode.window.showWarningMessage('No repository workspace open.');
+        return;
+      }
+
+      const profiles = await profileManager.getProfiles();
+      if (profiles.length === 0) {
+        vscode.window.showWarningMessage('No profiles available to bind.');
+        return;
+      }
+
+      const currentBoundId = await profileManager.getAssociation(repoRoot);
+      const items = profiles.map(p => ({
+        label: `${p.id === currentBoundId ? '$(check) ' : ''}${p.name}`,
+        description: `@${p.github?.username || 'none'} <${p.git.email}>`,
+        detail: `Scope: ${p.git.scope} · Auth: ${p.authentication.type}`,
+        profileId: p.id,
+      }));
+
+      const selected = await vscode.window.showQuickPick(items, {
+        placeHolder: 'Select profile to bind permanently to this repository',
+      });
+      if (!selected) return;
+
+      await profileManager.switchProfile(selected.profileId, repoRoot);
+      await profileManager.associateRepository(repoRoot, selected.profileId);
+      const profile = await profileManager.getProfile(selected.profileId);
+      vscode.window.showInformationMessage(`Repository permanently bound to profile "${profile?.name}".`);
+      onProfileChanged?.();
+    })
+  );
+
+  // 5. Unbind Current Repo from Profile
+  context.subscriptions.push(
+    vscode.commands.registerCommand('gitaxis.unbindRepo', async () => {
+      const repoRoot = await getCurrentRepoRoot();
+      if (!repoRoot) {
+        vscode.window.showWarningMessage('No repository workspace open.');
+        return;
+      }
+
+      const currentBoundId = await profileManager.getAssociation(repoRoot);
+      if (!currentBoundId) {
+        vscode.window.showInformationMessage('Current repository is not explicitly bound to any profile.');
+        return;
+      }
+
+      const profile = await profileManager.getProfile(currentBoundId);
+      await profileManager.disassociateRepository(repoRoot);
+      vscode.window.showInformationMessage(
+        `Unbound repository from profile "${profile?.name || currentBoundId}". It will now use auto-matching or fallback.`
+      );
+      onProfileChanged?.();
+    })
+  );
+
+  // 6. Verify Account Authentication
+  context.subscriptions.push(
+    vscode.commands.registerCommand('gitaxis.verifyAccount', async (targetProfileId?: string) => {
+      if (!accountVerifier) {
+        vscode.window.showWarningMessage('Account verification service is not initialized.');
+        return;
+      }
+
+      const profiles = await profileManager.getProfiles();
+      if (profiles.length === 0) {
+        vscode.window.showWarningMessage('No profiles available to verify.');
+        return;
+      }
+
+      let selectedId = targetProfileId;
+      if (!selectedId) {
+        const repoRoot = await getCurrentRepoRoot();
+        const resolved = repoRoot ? await profileManager.resolveProfileForRepository(repoRoot) : undefined;
+        const active = resolved?.profile || (await profileManager.getActiveProfile());
+
+        const items = profiles.map(p => ({
+          label: `${p.id === active?.id ? '$(check) ' : ''}${p.name}`,
+          description: `@${p.github?.username || 'none'} <${p.git.email}>`,
+          detail: `Auth: ${p.authentication.type}`,
+          profileId: p.id,
+        }));
+
+        const selected = await vscode.window.showQuickPick(items, {
+          placeHolder: 'Select profile to verify with GitHub',
+        });
+        if (!selected) return;
+        selectedId = selected.profileId;
+      }
+
+      const profile = await profileManager.getProfile(selectedId);
+      if (!profile) return;
+
+      const repoRoot = await getCurrentRepoRoot();
+
+      await vscode.window.withProgress(
+        {
+          location: vscode.ProgressLocation.Notification,
+          title: `GitAxis: Verifying profile "${profile.name}"...`,
+        },
+        async () => {
+          const res = await accountVerifier.verifyProfile(profile, repoRoot);
+          if (res.success) {
+            let detail = res.message;
+            if (res.scopes && res.scopes.length > 0) {
+              detail += `\nScopes: ${res.scopes.join(', ')}`;
+            }
+            if (res.expiration) {
+              detail += `\nToken expires: ${res.expiration}`;
+            }
+            vscode.window.showInformationMessage(`✓ Profile "${profile.name}" verified!\n${detail}`);
+          } else {
+            vscode.window.showWarningMessage(`✗ Verification failed for "${profile.name}":\n${res.message}`);
           }
         }
       );

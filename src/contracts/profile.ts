@@ -19,11 +19,13 @@ export interface GitHubIdentity {
   host: string;
   username: string;
   accountId?: string;
+  orgs?: string[];
 }
 
 export interface GitHubIdentityInput {
   host?: string;
   username: string;
+  orgs?: string[];
 }
 
 export type ProfileSource =

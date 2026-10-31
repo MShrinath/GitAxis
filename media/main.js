@@ -47,6 +47,7 @@
         gitEmail: document.getElementById('form-git-email')?.value || '',
         githubUsername: document.getElementById('form-gh-user')?.value || '',
         host: document.getElementById('form-host')?.value || 'github.com',
+        orgs: document.getElementById('form-orgs')?.value || '',
         pat: document.getElementById('form-pat')?.value || '',
         scope: scopeEl ? scopeEl.value : 'local',
         title: document.getElementById('form-title')?.innerText || 'CREATE / EDIT PROFILE',
@@ -70,6 +71,7 @@
         if (document.getElementById('form-git-email')) document.getElementById('form-git-email').value = f.gitEmail || '';
         if (document.getElementById('form-gh-user')) document.getElementById('form-gh-user').value = f.githubUsername || '';
         if (document.getElementById('form-host')) document.getElementById('form-host').value = f.host || 'github.com';
+        if (document.getElementById('form-orgs')) document.getElementById('form-orgs').value = f.orgs || '';
         if (document.getElementById('form-pat')) document.getElementById('form-pat').value = f.pat || '';
         if (f.scope) {
           const radio = document.querySelector('input[name="form-scope"][value="' + f.scope + '"]');
@@ -95,6 +97,7 @@
     const gitEmail = (document.getElementById('form-git-email')?.value || '').trim();
     const githubUsername = (document.getElementById('form-gh-user')?.value || '').trim();
     const host = (document.getElementById('form-host')?.value || '').trim() || 'github.com';
+    const orgs = (document.getElementById('form-orgs')?.value || '').trim();
     const pat = (document.getElementById('form-pat')?.value || '').trim();
     const scopeEl = document.querySelector('input[name="form-scope"]:checked');
     const scope = scopeEl ? scopeEl.value : 'local';
@@ -123,12 +126,12 @@
     if (id) {
       vscode.postMessage({
         command: 'updateProfileFromForm',
-        data: { id, name, gitName, gitEmail, githubUsername, host, pat, scope },
+        data: { id, name, gitName, gitEmail, githubUsername, host, orgs, pat, scope },
       });
     } else {
       vscode.postMessage({
         command: 'createProfileFromForm',
-        data: { name, gitName, gitEmail, githubUsername, host, pat, scope },
+        data: { name, gitName, gitEmail, githubUsername, host, orgs, pat, scope },
       });
     }
   }
@@ -141,6 +144,7 @@
     if (document.getElementById('form-git-email')) document.getElementById('form-git-email').value = '';
     if (document.getElementById('form-gh-user')) document.getElementById('form-gh-user').value = '';
     if (document.getElementById('form-host')) document.getElementById('form-host').value = 'github.com';
+    if (document.getElementById('form-orgs')) document.getElementById('form-orgs').value = '';
     if (document.getElementById('form-pat')) {
       const patInput = document.getElementById('form-pat');
       patInput.value = '';
@@ -170,6 +174,7 @@
     if (document.getElementById('form-git-email')) document.getElementById('form-git-email').value = p.git.email;
     if (document.getElementById('form-gh-user')) document.getElementById('form-gh-user').value = p.github?.username || '';
     if (document.getElementById('form-host')) document.getElementById('form-host').value = p.github?.host || 'github.com';
+    if (document.getElementById('form-orgs')) document.getElementById('form-orgs').value = (p.github?.orgs || []).join(', ');
     if (document.getElementById('form-pat')) {
       const patInput = document.getElementById('form-pat');
       patInput.value = '';
@@ -269,6 +274,18 @@
         }
         break;
       }
+      case 'verifyProfile': {
+        const profileId = target.getAttribute('data-profile-id');
+        if (profileId) {
+          const resBox = document.getElementById('verify-result-' + profileId);
+          if (resBox) {
+            resBox.innerHTML = '<span class="hint-text">Verifying account credentials...</span>';
+            resBox.classList.remove('hidden');
+          }
+          vscode.postMessage({ command: 'verifyProfile', profileId });
+        }
+        break;
+      }
       case 'editProfile': {
         const profileId = target.getAttribute('data-profile-id');
         if (profileId) {
@@ -324,7 +341,7 @@
   });
 
   // Attach input listeners for persistent caching
-  ['form-name', 'form-git-name', 'form-git-email', 'form-gh-user', 'form-host', 'form-pat'].forEach(function (id) {
+  ['form-name', 'form-git-name', 'form-git-email', 'form-gh-user', 'form-host', 'form-orgs', 'form-pat'].forEach(function (id) {
     const el = document.getElementById(id);
     if (el) {
       el.addEventListener('input', saveCurrentFormToState);
@@ -349,6 +366,23 @@
         submitBtn.innerText = id ? 'Update Profile' : 'Save Profile';
       }
       showFormError(msg.error || 'Failed to save profile.');
+    } else if (msg.command === 'verificationResult') {
+      const resBox = document.getElementById('verify-result-' + msg.profileId);
+      if (resBox && msg.result) {
+        resBox.classList.remove('hidden');
+        if (msg.result.success) {
+          var detail = '<div class="badge badge-success">✓ ' + (msg.result.message || 'Verified') + '</div>';
+          if (msg.result.scopes && msg.result.scopes.length > 0) {
+            detail += '<div class="sub" style="margin-top:2px; font-size:10px;">Scopes: ' + msg.result.scopes.join(', ') + '</div>';
+          }
+          if (msg.result.expiration) {
+            detail += '<div class="sub" style="margin-top:2px; font-size:10px;">Expires: ' + msg.result.expiration + '</div>';
+          }
+          resBox.innerHTML = detail;
+        } else {
+          resBox.innerHTML = '<div class="badge badge-danger">✗ ' + (msg.result.message || 'Verification failed') + '</div>';
+        }
+      }
     } else if (msg.command === 'profileDeleted') {
       const currentId = document.getElementById('form-profile-id')?.value;
       if (currentId === msg.profileId) {

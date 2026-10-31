@@ -13,11 +13,14 @@ export class GitHubCliAuth {
     }
   }
 
-  public async getToken(hostname?: string): Promise<string | undefined> {
+  public async getToken(hostname?: string, username?: string): Promise<string | undefined> {
     try {
       const args = ['auth', 'token'];
       if (hostname) {
         args.push('--hostname', hostname);
+      }
+      if (username) {
+        args.push('--user', username);
       }
       const { stdout } = await execFileAsync('gh', args, { timeout: 5000 });
       const token = stdout.trim();

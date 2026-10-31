@@ -140,7 +140,7 @@ export class HtmlBuilder {
   <div class="header-bar">
     <div class="brand-title">
       <span>GitAxis Control Center</span>
-      <span class="brand-pill">v0.4.0</span>
+      <span class="brand-pill">v0.5.0</span>
     </div>
     <button type="button" class="icon-btn-ghost" title="Refresh state" data-action="refresh">
       ${Icons.refresh}
@@ -156,7 +156,10 @@ export class HtmlBuilder {
           <span class="status-dot ${profile ? 'dot-active' : 'dot-inactive'}"></span>
           <span>${profileName}</span>
         </div>
-        ${profile ? `<span class="badge badge-success">Active</span>` : ''}
+        <div>
+          ${profile ? `<span class="badge badge-success">Active</span>` : ''}
+          ${state.linkedProfileId && profile && state.linkedProfileId === profile.id ? `<span class="badge badge-info">Bound to repo</span>` : ''}
+        </div>
       </div>
       <div class="meta-list">
         <div class="meta-item">
@@ -275,8 +278,10 @@ export class HtmlBuilder {
             <span class="sub">Scope: ${escapeHtml(p.git.scope || 'local')} · Auth: ${escapeHtml(authText)}</span>
           </div>
         </div>
+        <div class="verify-result-box hidden" id="verify-result-${escapeHtml(p.id)}"></div>
         <div class="btn-group">
           ${!isActive ? `<button type="button" class="btn btn-sm" data-action="switchProfile" data-profile-id="${escapeHtml(p.id)}">Switch</button>` : ''}
+          <button type="button" class="btn btn-sm btn-secondary" data-action="verifyProfile" data-profile-id="${escapeHtml(p.id)}">Verify</button>
           <button type="button" class="btn btn-sm btn-secondary" data-action="editProfile" data-profile-id="${escapeHtml(p.id)}">Edit</button>
           <button type="button" class="btn btn-sm btn-danger" data-action="deleteProfile" data-profile-id="${escapeHtml(p.id)}">Delete</button>
         </div>
@@ -318,6 +323,11 @@ export class HtmlBuilder {
       <div class="form-group">
         <label class="form-label" for="form-host">GitHub Host</label>
         <input type="text" id="form-host" class="input-text" value="github.com" placeholder="github.com" autocomplete="off" />
+      </div>
+
+      <div class="form-group">
+        <label class="form-label" for="form-orgs">Allowed Orgs / Owner Patterns <span class="opt">(optional, comma-separated)</span></label>
+        <input type="text" id="form-orgs" class="input-text" placeholder="e.g. acme-corp, my-org, corp-*" autocomplete="off" />
       </div>
 
       <div class="form-group">

@@ -5,9 +5,10 @@ import { ProfileManager } from '../profiles/profileManager';
 import { RepositoryDiscovery } from '../discovery/repositoryDiscovery';
 import { SystemDiscovery } from '../discovery/systemDiscovery';
 import { CreateProfileInput, GitRepository, ProfileMatchResult, UpdateProfileInput } from '../contracts';
-import { Validation } from '../utils/validation';
 import { Platform } from '../utils/platform';
+import { Validation } from '../utils/validation';
 import { logger } from '../utils/logger';
+import { AccountVerifier } from '../auth/accountVerifier';
 
 const ALLOWED_COMMANDS = new Set([
   'refresh',
@@ -22,6 +23,7 @@ const ALLOWED_COMMANDS = new Set([
   'linkToRepo',
   'unlinkRepo',
   'useRecommended',
+  'verifyProfile',
 ]);
 
 export class SidebarViewProvider implements vscode.WebviewViewProvider {
@@ -36,7 +38,8 @@ export class SidebarViewProvider implements vscode.WebviewViewProvider {
     private readonly profileManager: ProfileManager,
     private readonly repoDiscovery: RepositoryDiscovery,
     private readonly systemDiscovery?: SystemDiscovery,
-    private readonly onProfileChanged?: () => void
+    private readonly onProfileChanged?: () => void,
+    private readonly accountVerifier?: AccountVerifier
   ) {}
 
   public resolveWebviewView(
@@ -147,6 +150,7 @@ export class SidebarViewProvider implements vscode.WebviewViewProvider {
                 ? {
                     host: typeof data.host === 'string' && data.host.trim() ? data.host.trim() : 'github.com',
                     username: data.githubUsername.trim(),
+                    orgs: typeof data.orgs === 'string' ? data.orgs.split(',').map((s: string) => s.trim()).filter(Boolean) : undefined,
                   }
                 : undefined,
               authentication: {
@@ -226,8 +230,13 @@ export class SidebarViewProvider implements vscode.WebviewViewProvider {
                 ? {
                     host: typeof data.host === 'string' && data.host.trim() ? data.host.trim() : 'github.com',
                     username: data.githubUsername.trim(),
+                    orgs: typeof data.orgs === 'string' ? data.orgs.split(',').map((s: string) => s.trim()).filter(Boolean) : undefined,
                   }
-                : { username: '', host: typeof data.host === 'string' && data.host.trim() ? data.host.trim() : 'github.com' },
+                : {
+                    username: '',
+                    host: typeof data.host === 'string' && data.host.trim() ? data.host.trim() : 'github.com',
+                    orgs: typeof data.orgs === 'string' ? data.orgs.split(',').map((s: string) => s.trim()).filter(Boolean) : undefined,
+                  },
             };
 
             const patVal = typeof data.pat === 'string' ? data.pat.trim() : undefined;
@@ -446,6 +455,40 @@ export class SidebarViewProvider implements vscode.WebviewViewProvider {
             }
             break;
           }
+
+          case 'verifyProfile': {
+            if (!message.profileId || typeof message.profileId !== 'string' || message.profileId.length > 128) {
+              break;
+            }
+            const profile = await this.profileManager.getProfile(message.profileId);
+            if (!profile) {
+              vscode.window.showWarningMessage(`Cannot verify: profile "${message.profileId}" does not exist.`);
+              break;
+            }
+            if (this.accountVerifier) {
+              const activeUri = vscode.window.activeTextEditor?.document.uri;
+              const workspaceFolder = activeUri && activeUri.scheme === 'file'
+                ? vscode.workspace.getWorkspaceFolder(activeUri)?.uri.fsPath
+                : vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+              let repoPath: string | undefined;
+              if (workspaceFolder) {
+                const repo = await this.repoDiscovery.detectRepository(workspaceFolder);
+                repoPath = repo?.path;
+              }
+              const res = await this.accountVerifier.verifyProfile(profile, repoPath);
+              this.view?.webview.postMessage({
+                command: 'verificationResult',
+                profileId: message.profileId,
+                result: res,
+              });
+              if (res.success) {
+                vscode.window.showInformationMessage(`Verified "${profile.name}": ${res.message}`);
+              } else {
+                vscode.window.showWarningMessage(`Verification warning for "${profile.name}": ${res.message}`);
+              }
+            }
+            break;
+          }
         }
       } catch (err) {
         logger.error(`Error handling webview message: ${String(err)}`);
@@ -479,21 +522,30 @@ export class SidebarViewProvider implements vscode.WebviewViewProvider {
 
   private async getCurrentState(): Promise<WebviewState> {
     const profiles = await this.profileManager.getProfiles();
-    const profile = await this.profileManager.getActiveProfile();
+    let profile = await this.profileManager.getActiveProfile();
 
     let repository: GitRepository | undefined;
     let matchResult: ProfileMatchResult | undefined;
     let repoUrl: string | undefined;
     let linkedProfileId: string | undefined;
 
-    const workspaceFolders = vscode.workspace.workspaceFolders;
-    if (workspaceFolders && workspaceFolders.length > 0) {
-      const folderPath = workspaceFolders[0].uri.fsPath;
+    const activeUri = vscode.window.activeTextEditor?.document.uri;
+    const folderPath = activeUri && activeUri.scheme === 'file'
+      ? vscode.workspace.getWorkspaceFolder(activeUri)?.uri.fsPath
+      : vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+
+    if (folderPath) {
       repository = await this.repoDiscovery.detectRepository(folderPath);
 
       if (repository) {
         linkedProfileId = await this.profileManager.getAssociation(repository.path);
-        matchResult = await this.profileManager.matchProfile({
+        const resolved = await this.profileManager.resolveProfileForRepository(repository.path, {
+          remotes: repository.remotes,
+        });
+        if (resolved?.profile) {
+          profile = resolved.profile;
+        }
+        matchResult = resolved?.matchResult || await this.profileManager.matchProfile({
           repositoryPath: repository.path,
           remotes: repository.remotes,
         });

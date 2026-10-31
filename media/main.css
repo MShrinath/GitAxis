@@ -188,6 +188,19 @@ body {
   border: 1px solid rgba(255, 255, 255, 0.08);
 }
 
+.badge-danger {
+  background: rgba(244, 135, 113, 0.2);
+  color: var(--error-fg);
+  border: 1px solid rgba(244, 135, 113, 0.3);
+}
+
+.verify-result-box {
+  margin-top: 6px;
+  padding: 4px 6px;
+  border-radius: 4px;
+  font-size: 11px;
+}
+
 .meta-list {
   margin-top: 8px;
   display: flex;

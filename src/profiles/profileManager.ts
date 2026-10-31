@@ -3,6 +3,7 @@ import * as path from 'path';
 import {
   CreateProfileInput,
   GitProfile,
+  GitRemote,
   ProfileId,
   ProfileMatchResult,
   UpdateProfileInput,
@@ -85,12 +86,23 @@ export class ProfileManager {
       throw new Error(`Profile with id "${id}" does not exist`);
     }
 
-    await this.store.setActive(id);
-
-    // If repository path is provided or scope is global, apply identity based on scope
+    // Apply identity first (atomic)
     if (repositoryPath || profile.git.scope === 'global') {
       await this.applyIdentityToRepository(profile, repositoryPath, confirmGlobalChange);
     }
+
+    // If repository path was provided, associate this repo with the profile so switching applies to current repo
+    if (repositoryPath) {
+      let repoRoot = repositoryPath;
+      try {
+        if (await this.gitClient.isRepository(repositoryPath)) {
+          repoRoot = await this.gitClient.getRoot(repositoryPath);
+        }
+      } catch {}
+      await this.store.setAssociation(repoRoot, id);
+    }
+
+    await this.store.setActive(id);
 
     logger.info(`Switched active profile to ${profile.name}`);
     return profile;
@@ -183,9 +195,14 @@ export class ProfileManager {
           resolvedKeyPath = path.join(os.homedir(), resolvedKeyPath.slice(1));
         }
         const normalizedKeyPath = Platform.normalizePath(resolvedKeyPath);
-        const sshCommand = rawSshKeyPath.startsWith('ssh ')
-          ? rawSshKeyPath
-          : `ssh -i "${normalizedKeyPath}"`;
+        let sshCommand: string;
+        if (rawSshKeyPath.startsWith('ssh ')) {
+          sshCommand = rawSshKeyPath.includes('-o IdentitiesOnly=yes')
+            ? rawSshKeyPath
+            : `${rawSshKeyPath} -o IdentitiesOnly=yes`;
+        } else {
+          sshCommand = `ssh -i "${normalizedKeyPath}" -o IdentitiesOnly=yes`;
+        }
 
         if (isRepo && targetPath) {
           await this.gitClient.setLocalConfig(targetPath, 'core.sshCommand', sshCommand);
@@ -275,4 +292,82 @@ export class ProfileManager {
   public async getAssociation(repoPath: string): Promise<ProfileId | undefined> {
     return this.store.getAssociation(repoPath);
   }
+
+  public async resolveProfileForRepository(
+    repositoryPath: string,
+    options?: {
+      remotes?: GitRemote[];
+      localGitEmail?: string;
+      localGitName?: string;
+    }
+  ): Promise<ResolvedRepoProfile | undefined> {
+    const profiles = await this.store.list();
+    if (profiles.length === 0) return undefined;
+
+    let targetPath = repositoryPath;
+    try {
+      if (await this.gitClient.isRepository(repositoryPath)) {
+        targetPath = await this.gitClient.getRoot(repositoryPath);
+      }
+    } catch {}
+
+    // 1. Explicit binding
+    const boundId = await this.store.getAssociation(targetPath);
+    if (boundId) {
+      const bound = profiles.find(p => p.id === boundId);
+      if (bound) {
+        return { profile: bound, source: 'binding', isBound: true };
+      }
+    }
+
+    // 2. Matcher (remote owner, host, email, name)
+    let remotes = options?.remotes;
+    if (!remotes) {
+      try {
+        remotes = await this.gitClient.getRemotes(targetPath);
+      } catch {}
+    }
+
+    let localGitEmail = options?.localGitEmail;
+    let localGitName = options?.localGitName;
+    if (!localGitEmail) {
+      try {
+        localGitEmail = (await this.gitClient.getLocalConfig(targetPath, 'user.email')) || (await this.gitClient.getConfig(targetPath, 'user.email'));
+      } catch {}
+    }
+    if (!localGitName) {
+      try {
+        localGitName = (await this.gitClient.getLocalConfig(targetPath, 'user.name')) || (await this.gitClient.getConfig(targetPath, 'user.name'));
+      } catch {}
+    }
+
+    const matchResult = await this.matcher.match({
+      repositoryPath: targetPath,
+      remotes,
+      localGitEmail,
+      localGitName,
+    });
+
+    if (matchResult.recommendedProfileId) {
+      const matched = profiles.find(p => p.id === matchResult.recommendedProfileId);
+      if (matched) {
+        return { profile: matched, source: 'matcher', isBound: false, matchResult };
+      }
+    }
+
+    // 3. Fallback: last-used / active profile
+    const active = await this.store.getActive();
+    if (active) {
+      return { profile: active, source: 'fallback', isBound: false };
+    }
+
+    return { profile: profiles[0], source: 'fallback', isBound: false };
+  }
+}
+
+export interface ResolvedRepoProfile {
+  profile: GitProfile;
+  source: 'binding' | 'matcher' | 'fallback';
+  isBound: boolean;
+  matchResult?: ProfileMatchResult;
 }

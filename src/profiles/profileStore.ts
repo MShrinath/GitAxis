@@ -88,6 +88,7 @@ export class PersistentProfileStore implements ProfileStore {
         ? {
             host: input.github.host?.trim() || 'github.com',
             username: input.github.username.trim(),
+            orgs: input.github.orgs ? input.github.orgs.map(o => o.trim()).filter(Boolean) : undefined,
           }
         : undefined,
       authentication: {
@@ -157,6 +158,10 @@ export class PersistentProfileStore implements ProfileStore {
             : {
                 host: input.github.host?.trim() || current.github?.host || 'github.com',
                 username: input.github.username ? input.github.username.trim() : current.github?.username || '',
+                orgs:
+                  input.github.orgs !== undefined
+                    ? input.github.orgs.map(o => o.trim()).filter(Boolean)
+                    : current.github?.orgs,
               }
           : current.github,
       authentication: {

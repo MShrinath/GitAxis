@@ -441,6 +441,15 @@ export class GitClient {
     await this.exec(args);
   }
 
+  public async getConfig(repoPath: string, key: string): Promise<string | undefined> {
+    try {
+      const { stdout } = await this.exec(['config', '--get', key], { cwd: repoPath });
+      return stdout || undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
   public async getLocalConfig(repoPath: string, key: string): Promise<string | undefined> {
     try {
       const { stdout } = await this.exec(['config', '--local', '--get', key], { cwd: repoPath });

@@ -2,7 +2,7 @@
   "name": "gitaxis",
   "displayName": "GitAxis - Git & GitHub Profile Manager",
   "description": "Multi-profile Git and GitHub control center for VS Code",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "publisher": "gitaxis",
   "icon": "media/icon.png",
   "repository": {
@@ -54,138 +54,163 @@
     "commands": [
       {
         "command": "gitaxis.open",
-        "title": "GitHub Manager: Open",
+        "title": "Open Control Center",
         "category": "GitAxis"
       },
       {
         "command": "gitaxis.switchProfile",
-        "title": "GitHub Manager: Switch Profile",
+        "title": "Switch Profile",
+        "category": "GitAxis"
+      },
+      {
+        "command": "gitaxis.bindRepo",
+        "title": "Bind Current Repo to Profile",
+        "category": "GitAxis"
+      },
+      {
+        "command": "gitaxis.unbindRepo",
+        "title": "Unbind Current Repo from Profile",
+        "category": "GitAxis"
+      },
+      {
+        "command": "gitaxis.verifyAccount",
+        "title": "Verify Profile Authentication",
         "category": "GitAxis"
       },
       {
         "command": "gitaxis.createProfile",
-        "title": "GitHub Manager: Create Profile",
+        "title": "Create Profile",
         "category": "GitAxis"
       },
       {
         "command": "gitaxis.manageProfiles",
-        "title": "GitHub Manager: Manage Profiles",
+        "title": "Manage Profiles",
         "category": "GitAxis"
       },
       {
         "command": "gitaxis.scanAccounts",
-        "title": "GitHub Manager: Scan Existing Accounts",
+        "title": "Scan Existing Accounts",
         "category": "GitAxis"
       },
       {
         "command": "gitaxis.status",
-        "title": "GitHub Manager: Status",
+        "title": "Status",
         "category": "GitAxis"
       },
       {
         "command": "gitaxis.commit",
-        "title": "GitHub Manager: Commit",
+        "title": "Commit",
         "category": "GitAxis"
       },
       {
         "command": "gitaxis.push",
-        "title": "GitHub Manager: Push",
+        "title": "Push",
         "category": "GitAxis"
       },
       {
         "command": "gitaxis.pull",
-        "title": "GitHub Manager: Pull",
+        "title": "Pull",
         "category": "GitAxis"
       },
       {
         "command": "gitaxis.fetch",
-        "title": "GitHub Manager: Fetch",
+        "title": "Fetch",
         "category": "GitAxis"
       },
       {
         "command": "gitaxis.createBranch",
-        "title": "GitHub Manager: Create Branch",
+        "title": "Create Branch",
         "category": "GitAxis"
       },
       {
         "command": "gitaxis.checkoutBranch",
-        "title": "GitHub Manager: Checkout Branch",
+        "title": "Checkout Branch",
         "category": "GitAxis"
       },
       {
         "command": "gitaxis.merge",
-        "title": "GitHub Manager: Merge",
+        "title": "Merge",
         "category": "GitAxis"
       },
       {
         "command": "gitaxis.rebase",
-        "title": "GitHub Manager: Rebase",
+        "title": "Rebase",
         "category": "GitAxis"
       },
       {
         "command": "gitaxis.stash",
-        "title": "GitHub Manager: Stash",
+        "title": "Stash",
         "category": "GitAxis"
       },
       {
         "command": "gitaxis.tag",
-        "title": "GitHub Manager: Tag",
+        "title": "Tag",
         "category": "GitAxis"
       },
       {
         "command": "gitaxis.reset",
-        "title": "GitHub Manager: Reset",
+        "title": "Reset",
         "category": "GitAxis"
       },
       {
         "command": "gitaxis.manageRemote",
-        "title": "GitHub Manager: Manage Remote",
+        "title": "Manage Remote",
         "category": "GitAxis"
       },
       {
         "command": "gitaxis.openGitHubRepo",
-        "title": "GitHub Manager: Open GitHub Repository",
+        "title": "Open GitHub Repository",
         "category": "GitAxis"
       },
       {
         "command": "gitaxis.createPullRequest",
-        "title": "GitHub Manager: Create Pull Request",
+        "title": "Create Pull Request",
         "category": "GitAxis"
       },
       {
         "command": "gitaxis.createIssue",
-        "title": "GitHub Manager: Create Issue",
+        "title": "Create Issue",
         "category": "GitAxis"
       },
       {
         "command": "gitaxis.diff",
-        "title": "GitHub Manager: Diff",
+        "title": "Diff",
         "category": "GitAxis"
       },
       {
         "command": "gitaxis.history",
-        "title": "GitHub Manager: History",
+        "title": "History",
         "category": "GitAxis"
       },
       {
         "command": "gitaxis.clone",
-        "title": "GitHub Manager: Clone Repository",
+        "title": "Clone Repository",
         "category": "GitAxis"
       },
       {
         "command": "gitaxis.actions",
-        "title": "GitHub Manager: View GitHub Actions",
+        "title": "View GitHub Actions",
         "category": "GitAxis"
       },
       {
         "command": "gitaxis.releases",
-        "title": "GitHub Manager: View GitHub Releases",
+        "title": "View GitHub Releases",
         "category": "GitAxis"
       }
     ],
     "configuration": {
       "title": "GitAxis",
       "properties": {
+        "gitaxis.guard.mode": {
+          "type": "string",
+          "enum": [
+            "block",
+            "warn",
+            "off"
+          ],
+          "default": "warn",
+          "description": "Commit and push safety guard mode: block mismatched operations, warn with actions, or disable."
+        },
         "gitaxis.autoDetectProfile": {
           "type": "boolean",
           "default": true,

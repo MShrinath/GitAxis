@@ -52,7 +52,7 @@ export class AuthManager {
       }
 
       case 'github-cli': {
-        const token = await this.ghCliAuth.getToken(host);
+        const token = await this.ghCliAuth.getToken(host, profile.github?.username);
         return {
           type: 'github-cli',
           username,

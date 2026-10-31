@@ -21,16 +21,30 @@ import { logger } from '../utils/logger';
 import { Validation } from '../utils/validation';
 
 
+export type GuardMode = 'block' | 'warn' | 'off';
+
 export type ProfileMismatchPromptFn = (
   activeProfile: GitProfile,
   remoteOwner: string,
   suggestedProfile?: GitProfile
-) => Promise<'switch' | 'continue' | 'cancel'>;
+) => Promise<'switch' | 'continue' | 'remember' | 'cancel'>;
+
+export type CommitMismatchPromptFn = (
+  repoConfig: { email?: string; name?: string },
+  profile: GitProfile
+) => Promise<'fix' | 'continue' | 'cancel'>;
+
+export type GuardCheckFailedPromptFn = (
+  reason: string
+) => Promise<boolean>;
 
 export class OperationManager implements IOperationManager {
   private history: OperationRecord[] = [];
   private confirmationHandler: ConfirmationHandler;
   private profileMismatchPrompt?: ProfileMismatchPromptFn;
+  private commitMismatchPrompt?: CommitMismatchPromptFn;
+  private guardCheckFailedPrompt?: GuardCheckFailedPromptFn;
+  private guardMode: GuardMode = 'warn';
 
   constructor(
     private profileManager: ProfileManager,
@@ -40,12 +54,45 @@ export class OperationManager implements IOperationManager {
     this.confirmationHandler = confirmationHandler ?? new ConfirmationHandler();
   }
 
+  public setGuardMode(mode: GuardMode): void {
+    this.guardMode = mode;
+  }
+
+  public getGuardMode(): GuardMode {
+    return this.guardMode;
+  }
+
   public setProfileMismatchPrompt(fn: ProfileMismatchPromptFn): void {
     this.profileMismatchPrompt = fn;
   }
 
+  public setCommitMismatchPrompt(fn: CommitMismatchPromptFn): void {
+    this.commitMismatchPrompt = fn;
+  }
+
+  public setGuardCheckFailedPrompt(fn: GuardCheckFailedPromptFn): void {
+    this.guardCheckFailedPrompt = fn;
+  }
+
   public getConfirmationHandler(): ConfirmationHandler {
     return this.confirmationHandler;
+  }
+
+  private matchesRemoteOwner(remoteOwner: string, profile: GitProfile): boolean {
+    const lowerRemote = remoteOwner.toLowerCase();
+    if (profile.github?.username && profile.github.username.toLowerCase() === lowerRemote) {
+      return true;
+    }
+    const orgs = profile.github?.orgs || [];
+    for (const org of orgs) {
+      const lowerOrg = org.trim().toLowerCase();
+      if (lowerOrg === lowerRemote) return true;
+      if (lowerOrg.includes('*')) {
+        const regex = new RegExp('^' + lowerOrg.replace(/\*/g, '.*') + '$');
+        if (regex.test(lowerRemote)) return true;
+      }
+    }
+    return false;
   }
 
   public getHistoryRecords(): OperationRecord[] {
@@ -118,56 +165,180 @@ export class OperationManager implements IOperationManager {
       }
 
       // 2. Resolve Profile first (needed for safety context & mismatch checks)
+      const repoPath = (operation.input as any)?.repositoryPath;
       let profile: GitProfile | undefined;
       if (operation.profileId) {
         profile = await this.profileManager.getProfile(operation.profileId);
+      }
+      if (!profile && repoPath) {
+        const resolved = await this.profileManager.resolveProfileForRepository(repoPath);
+        profile = resolved?.profile;
       }
       if (!profile) {
         profile = await this.profileManager.getActiveProfile();
       }
 
-      // 3. Remote profile mismatch check (PLAN.md Section 22)
-      if (profile && profile.github?.username && operation.target.kind === 'remote') {
-        const repoPath = (operation.input as any).repositoryPath;
-        if (repoPath) {
+      // 3. Commit Guard Check (Section 4)
+      if (operation.type === 'git.commit' && repoPath && profile) {
+        if (this.guardMode !== 'off') {
           try {
-            const remotes = await this.gitClient.getRemotes(repoPath);
-            const targetRemote = remotes.find(r => r.name === (operation.target as any).remoteName);
-            if (targetRemote && targetRemote.owner) {
-              if (targetRemote.owner.toLowerCase() !== profile.github.username.toLowerCase()) {
-                const matchResult = await this.profileManager.matchProfile({
-                  repositoryPath: repoPath,
-                  remotes,
-                });
-                const suggested = matchResult.recommendedProfileId
-                  ? await this.profileManager.getProfile(matchResult.recommendedProfileId)
-                  : undefined;
+            const localEmail = await this.gitClient.getLocalConfig(repoPath, 'user.email');
+            const localName = await this.gitClient.getLocalConfig(repoPath, 'user.name');
+            const effectiveEmail = localEmail || (await this.gitClient.getConfig(repoPath, 'user.email'));
+            const effectiveName = localName || (await this.gitClient.getConfig(repoPath, 'user.name'));
 
-                if (this.profileMismatchPrompt) {
-                  const decision = await this.profileMismatchPrompt(profile, targetRemote.owner, suggested);
+            const emailMismatch =
+              effectiveEmail !== undefined &&
+              profile.git.email !== undefined &&
+              effectiveEmail.trim().toLowerCase() !== profile.git.email.trim().toLowerCase();
+            const nameMismatch =
+              effectiveName !== undefined &&
+              profile.git.name !== undefined &&
+              effectiveName.trim().toLowerCase() !== profile.git.name.trim().toLowerCase();
+
+            if (emailMismatch || nameMismatch) {
+              if (this.guardMode === 'block') {
+                record.state = 'cancelled';
+                return this.createErrorResult(
+                  operation.id,
+                  'GUARD_BLOCKED',
+                  `Commit blocked by GitAxis guard: Repo config (email: "${effectiveEmail || 'unset'}", name: "${effectiveName || 'unset'}") does not match profile "${profile.name}" (email: "${profile.git.email}", name: "${profile.git.name}").`,
+                  `Commit blocked by GitAxis guard: Git author does not match profile "${profile.name}".`,
+                  startedAt,
+                  record
+                );
+              } else if (this.guardMode === 'warn') {
+                if (this.commitMismatchPrompt) {
+                  const decision = await this.commitMismatchPrompt(
+                    { email: effectiveEmail, name: effectiveName },
+                    profile
+                  );
                   if (decision === 'cancel') {
                     record.state = 'cancelled';
                     return this.createErrorResult(
                       operation.id,
                       'OPERATION_CANCELLED',
-                      'User cancelled operation due to profile mismatch',
-                      'Operation was cancelled due to profile mismatch',
+                      'User cancelled commit due to author mismatch',
+                      'Commit cancelled due to author mismatch',
                       startedAt,
                       record
                     );
-                  } else if (decision === 'switch' && suggested) {
-                    await this.profileManager.switchProfile(suggested.id, repoPath);
-                    profile = suggested;
+                  } else if (decision === 'fix') {
+                    await this.profileManager.applyIdentityToRepository(profile, repoPath);
                   }
                 }
-
                 warnings.push({
-                  code: 'PROFILE_MISMATCH',
-                  message: `Active profile "${profile.name}" (${profile.github?.username || 'no user'}) does not match remote owner "${targetRemote.owner}".`,
+                  code: 'COMMIT_AUTHOR_MISMATCH',
+                  message: `Repo identity (${effectiveName} <${effectiveEmail}>) differs from profile "${profile.name}" (${profile.git.name} <${profile.git.email}>).`,
                 });
               }
             }
-          } catch {}
+          } catch (err) {
+            // Fail closed: do not swallow error silently
+            logger.error(`Commit guard check failed: ${String(err)}`);
+            if (this.guardCheckFailedPrompt) {
+              const proceed = await this.guardCheckFailedPrompt(`Commit guard check failed: ${String(err)}`);
+              if (!proceed) {
+                record.state = 'cancelled';
+                return this.createErrorResult(
+                  operation.id,
+                  'GUARD_CHECK_FAILED',
+                  String(err),
+                  'Commit guard safety check failed',
+                  startedAt,
+                  record
+                );
+              }
+            }
+          }
+        }
+      }
+
+      // 4. Remote / Push Guard Check (Section 4)
+      if (profile && (operation.target.kind === 'remote' || operation.type === 'git.push') && repoPath) {
+        if (this.guardMode !== 'off') {
+          try {
+            const remotes = await this.gitClient.getRemotes(repoPath);
+            const targetRemoteName = (operation.target as any).remoteName || (operation.input as any).remote || 'origin';
+            const targetRemote = remotes.find(r => r.name === targetRemoteName) || remotes[0];
+
+            if (targetRemote && targetRemote.owner) {
+              const isMatch = this.matchesRemoteOwner(targetRemote.owner, profile);
+              if (!isMatch) {
+                if (this.guardMode === 'block') {
+                  record.state = 'cancelled';
+                  return this.createErrorResult(
+                    operation.id,
+                    'GUARD_BLOCKED',
+                    `Push blocked by GitAxis guard: Remote owner "${targetRemote.owner}" does not match profile "${profile.name}" (@${profile.github?.username || 'none'}) or allowed orgs.`,
+                    `Push blocked by GitAxis guard: Remote owner mismatch.`,
+                    startedAt,
+                    record
+                  );
+                } else if (this.guardMode === 'warn') {
+                  const matchResult = await this.profileManager.matchProfile({
+                    repositoryPath: repoPath,
+                    remotes,
+                  });
+                  const suggested = matchResult.recommendedProfileId
+                    ? await this.profileManager.getProfile(matchResult.recommendedProfileId)
+                    : undefined;
+
+                  if (this.profileMismatchPrompt) {
+                    const decision = await this.profileMismatchPrompt(profile, targetRemote.owner, suggested);
+                    if (decision === 'cancel') {
+                      record.state = 'cancelled';
+                      return this.createErrorResult(
+                        operation.id,
+                        'OPERATION_CANCELLED',
+                        'User cancelled operation due to profile mismatch',
+                        'Operation was cancelled due to profile mismatch',
+                        startedAt,
+                        record
+                      );
+                    } else if (decision === 'switch' && suggested) {
+                      await this.profileManager.switchProfile(suggested.id, repoPath);
+                      profile = suggested;
+                    } else if (decision === 'remember') {
+                      const currentOrgs = profile.github?.orgs || [];
+                      if (!currentOrgs.includes(targetRemote.owner)) {
+                        await this.profileManager.updateProfile(profile.id, {
+                          github: {
+                            ...profile.github,
+                            username: profile.github?.username || '',
+                            host: profile.github?.host || 'github.com',
+                            orgs: [...currentOrgs, targetRemote.owner],
+                          },
+                        });
+                      }
+                    }
+                  }
+
+                  warnings.push({
+                    code: 'PROFILE_MISMATCH',
+                    message: `Active profile "${profile.name}" (${profile.github?.username || 'no user'}) does not match remote owner "${targetRemote.owner}".`,
+                  });
+                }
+              }
+            }
+          } catch (err) {
+            // Fail closed: do not swallow error silently
+            logger.error(`Push guard check failed: ${String(err)}`);
+            if (this.guardCheckFailedPrompt) {
+              const proceed = await this.guardCheckFailedPrompt(`Push guard check failed: ${String(err)}`);
+              if (!proceed) {
+                record.state = 'cancelled';
+                return this.createErrorResult(
+                  operation.id,
+                  'GUARD_CHECK_FAILED',
+                  String(err),
+                  'Push guard safety check failed',
+                  startedAt,
+                  record
+                );
+              }
+            }
+          }
         }
       }
 

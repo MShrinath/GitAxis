@@ -17,6 +17,9 @@ export type OperationErrorCode =
   | 'OPERATION_CANCELLED'
   | 'CONFIRMATION_REQUIRED'
   | 'INVALID_INPUT'
+  | 'PROFILE_MISMATCH'
+  | 'GUARD_BLOCKED'
+  | 'GUARD_CHECK_FAILED'
   | 'UNKNOWN';
 
 export interface OperationError {

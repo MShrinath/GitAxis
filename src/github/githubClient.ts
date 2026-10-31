@@ -46,21 +46,38 @@ export class GitHubClient {
 
     // Try direct fetch first if token is available
     if (this.auth?.credential) {
+      let response: Response | undefined;
       try {
-        const response = await fetch(url, {
+        response = await fetch(url, {
           method,
           headers,
           body: body ? JSON.stringify(body) : undefined,
         });
+      } catch (networkErr) {
+        logger.warn(`Direct fetch network error, falling back to gh CLI: ${String(networkErr)}`);
+      }
 
+      if (response) {
         if (!response.ok) {
           const errText = await response.text();
-          throw new Error(`GitHub API error (${response.status}): ${errText}`);
+          let parsedMsg: string = errText;
+          try {
+            const json = JSON.parse(errText);
+            if (json.message) parsedMsg = json.message;
+          } catch {}
+
+          if (response.status === 401) {
+            throw new Error(`GitHub API (401 Unauthorized): Bad credentials or expired token. ${parsedMsg}`);
+          } else if (response.status === 403) {
+            throw new Error(`GitHub API (403 Forbidden): Access denied or rate limited. ${parsedMsg}`);
+          } else if (response.status === 404) {
+            throw new Error(`GitHub API (404 Not Found): Resource not found or token missing required scopes. ${parsedMsg}`);
+          } else {
+            throw new Error(`GitHub API error (${response.status}): ${parsedMsg}`);
+          }
         }
 
         return (await response.json()) as T;
-      } catch (err) {
-        logger.warn(`Direct fetch failed, checking fallback to gh CLI: ${String(err)}`);
       }
     }
 

@@ -144,7 +144,7 @@ describe('Profile Credentials & Remote Synchronization', () => {
     await profileManager.switchProfile(sshProfile.id, repoPath);
     assert.strictEqual(
       localConfigs.get('core.sshCommand'),
-      'ssh -i "C:/Users/dev/.ssh/id_ed25519_custom"'
+      'ssh -i "C:/Users/dev/.ssh/id_ed25519_custom" -o IdentitiesOnly=yes'
     );
 
     // Switch to non-SSH profile
