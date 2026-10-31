@@ -16,50 +16,100 @@ It eliminates the friction of juggling multiple GitHub accounts (Work, Personal,
 ## The Problem GitAxis Solves
 
 When working across multiple GitHub accounts on the same computer:
-1. **Wrong Author Stamp**: You commit to a client or work repository with your personal email (or vice versa).
-2. **The 403 Push Failure**: You run `git push` in VS Code, but Git and Windows/macOS Credential Manager silently send your default cached personal account, failing with:
+
+1. **Wrong Author Stamp**: Commits to client or enterprise repositories accidentally use a personal email address (or vice versa).
+2. **The 403 Push Failure**: Running `git push` in VS Code fails because Git and OS Credential Managers silently send default cached credentials:
    ```text
    remote: Permission to work-org/repo.git denied to personal-user.
    fatal: unable to access 'https://github.com/work-org/repo.git/': The requested URL returned error: 403
    ```
-3. **SSH Key Collisions**: `ssh-agent` automatically offers keys in the order they were loaded, causing GitHub to identify you as the wrong user even when you specified a key file.
-4. **Lost Form Inputs (The Alt-Tab Pain)**: VS Code modal popups and QuickPicks disappear as soon as you switch to your browser to copy a Personal Access Token (PAT).
+3. **SSH Key Collisions**: The system `ssh-agent` offers keys in the order they were loaded, causing GitHub to identify the wrong identity even when a specific key file was designated.
+4. **Lost Form Inputs (The Alt-Tab Problem)**: VS Code modal popups and QuickPicks vanish whenever switching to an external browser to copy a Personal Access Token (PAT).
 
 ---
 
-## Key Features
+## Visual Overview
 
-- **Robust Process Cancellation & Adaptive Timeouts**: Full cancellation support using `AbortController` and `AbortSignal` directly terminates underlying Git processes. Network operations run without artificial timeouts relying on responsive user cancellation, and long-running local commands (`git switch`, `git add`, `git stash`, `git reset`, `git restore`) are protected from premature termination.
-- **Comprehensive Safety Confirmations**:
-  - `git rebase` confirmation with commit history warning.
-  - `git checkout` & `git restore` warning when working tree has uncommitted/dirty changes.
-  - `git commit --amend` detection when amending commits that have already been published to upstream.
-  - `git tag -d` and `git remote remove` deletion confirmations.
-  - `github.pull-request.merge` and `github.issue.close` mutating confirmations.
-  - Enriched confirmation dialogs displaying Profile, Repository, Branch, and Remote details.
-- **Repository Detection Caching**: Added TTL-based repository discovery cache to eliminate redundant Git process spawns during status bar and webview refreshes.
-- **Atomic Profile Switching**: Ensures Git identity configuration successfully applies before persisting active profile state; cancelling global changes leaves active state intact.
-- **Folder Rules via `includeIf` ("Set-and-Forget")**: Define folder path rules (e.g. `~/work/**` &rarr; *Work*, `~/personal/**` &rarr; *Personal*). GitAxis generates include files in `~/.gitaxis/profiles/<profile>.gitconfig` and manages `[includeIf "gitdir:..."]` blocks in your global `~/.gitconfig` with full preview and 1-click clean removal.
+GitAxis integrates cleanly into VS Code's Activity Bar and Status Bar with a dedicated sidebar interface:
+
+```text
++------------------ GitAxis Control Center ------------------+
+|  ACTIVE IDENTITY                                            |
+|  [Active] Work Profile (Verified)                          |
+|    Author: Jane Doe <jane@company.com>                      |
+|    Remote: https://jane-work@github.com/company/project.git |
+|    Branch: feature/auth-refactor                            |
++-------------------------------------------------------------+
+|  PROFILES (3)                            [+ Add Profile]    |
+|                                                             |
+|  * Work                 [Active]     [Edit]                 |
+|    jane-work | GCM / PAT                                    |
+|                                                             |
+|  o Personal                          [Switch]  [Edit]       |
+|    janedoe | SSH (~/.ssh/id_ed25519)                        |
+|                                                             |
+|  o OpenSource                        [Switch]  [Edit]       |
+|    janedoe-oss | PAT (No Push)       [Switch]  [Edit]       |
++-------------------------------------------------------------+
+|  DISCOVERED ACCOUNTS (1 found)                              |
+|  [?] client-contractor (gh cli)          [+ Import]         |
++-------------------------------------------------------------+
+  Status Bar: [github] Work Profile (jane-work)  |  [check]
+```
+
+---
+
+## Quick Start Guide
+
+### 1. Open the GitAxis Control Center
+Click the **GitAxis** icon in the left Activity Bar to open the Control Center sidebar, or press `Ctrl+Alt+G` (`Cmd+Alt+G` on macOS).
+
+### 2. Discover or Add Profiles
+- **Quick Import**: Click the **Scan Local Accounts** icon in the sidebar title bar to detect accounts already configured on your machine and import them with 1 click.
+- **Custom Profile**: Click **+ Add Profile** in the Profiles header to open the form. Fill in:
+  - **Profile Name**: e.g. `work`, `personal`, `opensource`.
+  - **Git Author Name & Email**: Used for commit logs.
+  - **GitHub Username**: Used for remote push authentication.
+  - **PAT Token** *(Optional)*: Stored securely in VS Code's encrypted `SecretStorage` and approved with your Git credential helper for native Source Control push authentication.
+
+### 3. Switch Profile
+Click **[Switch]** on any profile. GitAxis immediately:
+- Updates author credentials in your repository.
+- Synchronizes remote push URLs and credential helpers.
+- Updates the bottom Status Bar badge (`[github] <active-profile>`).
+
+### 4. Push with Native Source Control
+Switch to VS Code's built-in **Source Control** view (`Ctrl+Shift+G`), make your commit, and click **Sync Changes / Push**. If using a PAT profile, GitAxis approves credentials with your native credential helper on profile switch; if using SSH or GCM, Git automatically routes to the correct key or account.
+
+---
+
+## Core Features
+
+### 1. Identity & Push Safety
+- **Commit Guard**: Verifies that the repository's configured `user.email` and `user.name` match the active profile before commits are created. Offers 1-click **Fix and continue**, **Commit anyway**, or **Cancel**.
+- **Push Guard**: Verifies the remote repository owner against the profile's allowed organizations and usernames before pushing. If pushing to an unlearned organization, GitAxis prompts to remember the owner for this profile.
+- **Configurable Safety Modes**: Choose between `block`, `warn` (default), or `off` via `gitaxis.guard.mode`. Guards fail closed safely if checks encounter unexpected conditions.
+- **Destructive Operation Confirmations**: Explicit confirmation dialogs before running high-risk commands (`git reset --hard`, `git push --force`, `git checkout` with uncommitted changes, `git rebase`, tag/remote deletions).
+
+### 2. Frictionless Identity Switching
+- **Status Bar Integration**: Dynamically tracks the active editor's repository (`[github] work-user`). If local Git configuration differs from the active profile, a warning badge flags the discrepancy with an informative tooltip.
+- **Global Keybinding**: Press `Ctrl+Alt+G` (`Cmd+Alt+G` on macOS) from anywhere in VS Code to switch profiles or inspect identity.
+- **Atomic Switching**: Ensures Git configuration successfully applies before persisting state; cancelling global changes leaves active state intact.
+- **Per-Repository Isolation**: Switching a profile in one repository updates that repository's local Git configuration without altering other repositories in multi-root workspaces.
+- **On-Demand Sidebar Form**: Create and edit profiles directly in the webview sidebar. The form stays cleanly collapsed until clicking **+ Add Profile** or **Edit**, preserving inputs across tab switches.
+
+### 3. Automated "Set-and-Forget" Rules
+- **Folder Rules via `includeIf`**: Define folder path rules (e.g. `~/work/**` -> *Work*, `~/personal/**` -> *Personal*). GitAxis generates include files in `~/.gitaxis/profiles/<profile>.gitconfig` and manages `[includeIf "gitdir:..."]` blocks in global `~/.gitconfig` with preview and 1-click clean removal.
+- **Remote URL Rules**: Automatically resolve profiles based on remote URL patterns (`hasconfig:remote.*.url:`).
 - **Show Effective Identity Inspector**: Inspect the active repository's effective `user.name`, `user.email`, `core.sshCommand`, GCM credentials, and remotes, alongside the deterministic rule (*Folder Rule*, *Profile Matcher*, or *Fallback*) that resolved them.
-- **Per-Repository Profile Switching**: Switching a profile in one repository updates that repository's local Git configuration without altering other repositories in multi-root workspaces.
-- **Quick Profile Switcher with Default Keybinding**: Press `Ctrl+Alt+G` (or `Cmd+Alt+G` on macOS) to instantly switch profiles or inspect identity.
-- **Commit & Push Guard**:
-  - **Commit Guard**: Verifies that the repo's configured `user.email` and `user.name` match the active profile before you commit. Offers 1-click **Fix and continue**, **Commit anyway**, or **Cancel**.
-  - **Push Guard**: Verifies the remote repository owner against the profile's allowed organizations/usernames before pushing. If pushing to an unlearned organization, GitAxis prompts to remember the owner for this profile.
-  - **Configurable Safety**: Choose between `block`, `warn` (default), or `off` via `gitaxis.guard.mode`. Fails closed safely if checks encounter unexpected conditions.
-- **Three-State Account Verification**: Profiles are verified with clear three-state status indicators: verified (green), failed (red), and neutral ('Configured, not verified'). Credential Manager and unauthenticated profiles show neutral grey without contacting the network at startup, avoiding intrusive system authentication popups. Hover tooltips detail token status, scopes, or expiration.
-- **SSH Key Isolation**: Always injects `-o IdentitiesOnly=yes` into `core.sshCommand` (`ssh -i "<key>" -o IdentitiesOnly=yes`) to ensure `ssh-agent` offers only the explicitly assigned key.
-- **Dynamic Status Bar & Mismatch Warning**: Status bar dynamically tracks the active editor's repository (`$(github) work-user`). If the local git config email differs from the active profile, GitAxis flags a warning icon (`$(warning)`) with a helpful tooltip.
-- **Protected Global Scope**: Global Git identity writes are hidden behind an advanced setting (`gitaxis.advanced.allowGlobalScope`) to prevent accidental machine-wide config overwrites.
-- **Instant 1-Click Identity Switching**: Switch author names, emails, and GitHub accounts in seconds directly from the sidebar or the status bar.
-- **Automated Credential & Remote Alignment**:
-  - Automatically targets Git Credential Manager (`credential.https://${host}.username`).
-  - Rewrites repository HTTPS remotes to embed the active username (`https://username@github.com/owner/repo.git`), ensuring Git Credential Manager never defaults to the wrong cached user.
-- **Direct PAT In-Memory Injection & Credential Helper Approval**: Personal Access Tokens (PATs) are stored safely in VS Code's encrypted SecretStorage (never written as plaintext to disk). When applying a PAT profile, GitAxis checks `credential.helper` and securely approves the credentials with git's native credential helper for seamless native VS Code Source Control pushes. In addition, GitAxis-managed operations inject temporary scoped extraheaders strictly in-memory per command.
-- **On-Demand In-Sidebar Form**: Create and edit profiles directly in the webview sidebar. The form stays cleanly collapsed until clicking **+ Add Profile** or **Edit**, preserving form inputs across tabs or browser switches.
-- **1-Click Local Account Discovery**: Inspects existing `git config` and GitHub CLI (`gh auth status`) logins, displaying 1-click **[+ Import as Profile]** chips.
-- **Native VS Code Design (No Emojis)**: Pixel-aligned SVG icons, theme-adaptive CSS variables, and clean layout built strictly to match VS Code's design system.
-- **Seamless Coexistence with Native SCM**: GitAxis does not bloat your sidebar with duplicate commit/push buttons; VS Code's built-in Source Control remains the primary, native Git tool.
+
+### 4. Authentication, SSH & Remote Isolation
+- **Automated Remote URL Alignment**: Rewrites repository HTTPS remotes to embed the active username (`https://username@github.com/owner/repo.git`), ensuring Git Credential Manager never defaults to the wrong cached user.
+- **SSH Key Isolation**: Injects `-o IdentitiesOnly=yes` into `core.sshCommand` (`ssh -i "<key>" -o IdentitiesOnly=yes`) to ensure `ssh-agent` offers only the explicitly assigned key.
+- **In-Memory Credential Injection & Credential Helper Approval**: Personal Access Tokens (PATs) are stored safely in VS Code's encrypted SecretStorage (never written as plaintext to disk). GitAxis checks `credential.helper` and approves credentials with the native credential helper for seamless native VS Code Source Control pushes. In addition, GitAxis-managed operations inject temporary scoped extraheaders strictly in-memory per command.
+- **Three-State Account Verification**: Profiles display verified (green), failed (red), and neutral ('Configured, not verified'). Credential Manager and unauthenticated profiles show neutral grey without contacting the network at startup, avoiding intrusive authentication popups. Hover tooltips detail token status, scopes, or expiration.
+- **Repository Detection Caching**: TTL-based repository discovery cache eliminates redundant Git process spawns during status bar and webview refreshes.
+- **Robust Process Cancellation**: Full cancellation support using `AbortController` and `AbortSignal` directly terminates underlying Git processes. Long-running local commands (`git switch`, `git add`, `git stash`, `git reset`, `git restore`) are protected from premature termination.
 
 ---
 
@@ -67,27 +117,70 @@ When working across multiple GitHub accounts on the same computer:
 
 ```text
                            GitAxis Sidebar
-                                 │
+                                 |
                  User clicks [Switch] to "work" profile
-                                 │
-         ┌───────────────────────┴───────────────────────┐
-         ▼                                               ▼
+                                 |
+         +-----------------------+-----------------------+
+         |                                               |
+         v                                               v
 1. Git Identity Config                          2. Git Authentication Config
-   • git config user.name "Work User"               • git config credential.username "work-user"
-   • git config user.email "work@company.com"         • Rewrite remote: https://work-user@github.com/...
-                                                   • Target GCM: credential.https://github.com.username
-                                                   • Configure core.sshCommand (if SSH configured)
-                                 │
-                                 ▼
+   * git config user.name "Work User"              * git config credential.username "work-user"
+   * git config user.email "work@company.com"        * Rewrite remote: https://work-user@github.com/...
+                                                   * Target GCM: credential.https://github.com.username
+                                                   * Configure core.sshCommand (if SSH configured)
+                                 |
+                                 v
                      VS Code Native Source Control
                         [ Commit & Push ]
-                                 │
-                                 ▼
+                                 |
+                                 v
                          GitHub Remote Server
-                    ✓ Authenticated as work-user
-                    ✓ Author stamped as Work User
-                    ✓ 0 Permission / 403 Errors
+                    - Authenticated as work-user
+                    - Author stamped as Work User
+                    - 0 Permission / 403 Errors
 ```
+
+---
+
+## Available Commands & Keybindings
+
+Access all GitAxis commands from the Command Palette (`Ctrl+Shift+P` / `Cmd+Shift+P`):
+
+| Command | Title | Default Shortcut | Description |
+|---|---|---|---|
+| `gitaxis.switchProfile` | **GitAxis: Switch Profile** | `Ctrl+Alt+G` (`Cmd+Alt+G`) | QuickPick to instantly select and activate a profile |
+| `gitaxis.open` | **GitAxis: Open Control Center** | — | Focus the GitAxis Control Center sidebar view |
+| `gitaxis.showEffectiveIdentity` | **GitAxis: Show Effective Identity** | — | Display resolved Git author, SSH, and GCM configuration |
+| `gitaxis.configureFolderRules` | **GitAxis: Configure Folder Rules** | — | Manage `includeIf` directory bindings and rules |
+| `gitaxis.verifyAccount` | **GitAxis: Verify Profile Authentication** | — | Test profile GitHub credentials and scopes on demand |
+| `gitaxis.scanAccounts` | **GitAxis: Scan Existing Accounts** | — | Discover existing local Git and GitHub CLI logins |
+| `gitaxis.createProfile` | **GitAxis: Create Profile** | — | Open the sidebar form to add a new profile |
+| `gitaxis.manageProfiles` | **GitAxis: Manage Profiles** | — | List and edit existing profile configurations |
+| `gitaxis.removeAllConfig` | **GitAxis: Remove All GitAxis Config** | — | Safe 1-click cleanup of all GitAxis include files and rules |
+
+---
+
+## Configuration Settings
+
+Customize GitAxis behaviors in VS Code Settings (`Ctrl+,` / `Cmd+,`, search for `GitAxis`):
+
+| Setting | Type | Default | Description |
+|---|---|---|---|
+| `gitaxis.guard.mode` | `string` (`"block"` \| `"warn"` \| `"off"`) | `"warn"` | Safety level for pre-commit author mismatch and pre-push organization mismatch guards. |
+| `gitaxis.confirmDestructiveOperations` | `boolean` | `true` | Require explicit confirmation for destructive Git operations (force push, rebase, checkout with dirty changes). |
+| `gitaxis.autoDetectProfile` | `boolean` | `true` | Automatically detect and prompt to switch profile based on repository remote and configuration. |
+| `gitaxis.promptScanOnFirstLaunch` | `boolean` | `true` | Prompt to scan system Git and GitHub CLI configurations on first launch. |
+| `gitaxis.advanced.allowGlobalScope` | `boolean` | `false` | Advanced: Show global Git identity scope option when creating profiles. Affects system-wide `~/.gitconfig`. |
+
+---
+
+## Security & Privacy
+
+- **100% Local Execution**: GitAxis runs entirely within your local VS Code environment. There is zero telemetry, zero analytics tracking, and no external phone-home server.
+- **Hardware-Backed Credential Encryption**: Personal Access Tokens (PATs) are saved using VS Code's `SecretStorage` API, which leverages OS credential vaults (Windows Credential Manager, macOS Keychain, or Linux Secret Service / libsecret). Tokens are never written to disk in plain text.
+- **No Background Network Pinging**: Profiles with Credential Manager or unauthenticated configurations default to a neutral status and do not ping the network on startup, eliminating unexpected system authentication prompts.
+- **Fail-Closed Safety**: Commit and push guards fail closed safely if unexpected system errors occur during validation.
+- **Protected Global Scope**: Machine-wide Git configuration writes are disabled by default behind `gitaxis.advanced.allowGlobalScope` to prevent accidental system-wide overrides.
 
 ---
 
@@ -155,42 +248,6 @@ npm run build
 
 ---
 
-## Configuration Settings
-
-| Setting | Type | Default | Description |
-|---|---|---|---|
-| `gitaxis.guard.mode` | `string` (`"block"` \| `"warn"` \| `"off"`) | `"warn"` | Safety level for pre-commit author mismatch and pre-push organization mismatch guards. |
-| `gitaxis.confirmDestructiveOperations` | `boolean` | `true` | Require explicit confirmation for destructive Git operations (force push, rebase, checkout with dirty changes). |
-| `gitaxis.autoDetectProfile` | `boolean` | `true` | Automatically detect and prompt to switch profile based on repository remote and configuration. |
-| `gitaxis.promptScanOnFirstLaunch` | `boolean` | `true` | Prompt to scan system Git and GitHub CLI configurations on first launch. |
-| `gitaxis.advanced.allowGlobalScope` | `boolean` | `false` | Advanced: Show global Git identity scope option when creating profiles. Affects system-wide ~/.gitconfig. |
-
----
-
-## Quick Start Guide
-
-### 1. Open the GitAxis Control Center
-Click the **GitAxis** icon in the left Activity Bar to open the Control Center sidebar.
-
-### 2. Discover or Add Profiles
-- **Quick Import**: Click the **Scan Local Accounts** icon in the sidebar title bar to detect accounts already configured on your machine and import them with 1 click.
-- **Custom Profile**: Click **+ Add Profile** in the Profiles header to open the form. Fill in:
-  - **Profile Name**: e.g. `work`, `personal`, `opensource`.
-  - **Git Author Name & Email**: Used for commit logs.
-  - **GitHub Username**: Used for remote push authentication.
-  - **PAT Token** *(Optional)*: If provided, stored securely in VS Code's encrypted `SecretStorage` and approved with your Git credential helper for native Source Control push authentication.
-
-### 3. Switch Profile
-Click **[Switch]** on any profile. GitAxis will immediately:
-- Update author credentials in your repository.
-- Synchronize remote push URLs and credential helpers.
-- Update the bottom Status Bar badge (`$(github) <active-profile>`).
-
-### 4. Push with Native Source Control
-Switch to VS Code's built-in **Source Control** view (`Ctrl+Shift+G`), make your commit, and click **Sync Changes / Push**. If using a PAT profile, GitAxis approves credentials with your native credential helper on profile switch; if using SSH or GCM, Git automatically routes to the right key or account!
-
----
-
 ## Frequently Asked Questions
 
 ### Why does GitAxis rewrite HTTPS remote URLs to include the username?
@@ -201,8 +258,6 @@ Yes. Tokens are saved in VS Code's native `SecretStorage` API, which encrypts th
 
 ### Does GitAxis touch my global Git settings?
 By default, GitAxis only modifies the local `.git/config` of the repository currently opened in your workspace. If you choose `Scope: Global` when creating or switching a profile, GitAxis will ask for explicit confirmation before altering your machine-wide Git settings.
-
----
 
 ### How does GitAxis work in VS Code Remote, WSL, or Dev Containers?
 When using VS Code Remote (SSH, WSL, Dev Containers, or GitHub Codespaces), GitAxis runs as a workspace extension inside the remote environment. GitAxis transparently configures the remote system's `~/.gitconfig`, reads remote SSH keys (`~/.ssh/`), and integrates with GitHub CLI logins installed in the remote container or VM.
@@ -241,13 +296,13 @@ When using VS Code Remote (SSH, WSL, Dev Containers, or GitHub Codespaces), GitA
 npm test
 
 # Check TypeScript types
-npm run compile
+npm run typecheck
 
 # Build production bundle with esbuild
 npm run build
 
 # Package clean VSIX file
-npx @vscode/vsce package --no-dependencies
+npm run package
 ```
 
 ---
