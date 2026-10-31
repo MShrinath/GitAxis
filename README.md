@@ -2,7 +2,7 @@
 
 [![GitHub Release](https://img.shields.io/github/v/release/MShrinath/GitAxis?logo=github&color=blue)](https://github.com/MShrinath/GitAxis/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
-[![Build & Tests](https://img.shields.io/badge/tests-80%20passing-brightgreen.svg)](https://github.com/MShrinath/GitAxis)
+[![Build & Tests](https://img.shields.io/badge/tests-89%20passing-brightgreen.svg)](https://github.com/MShrinath/GitAxis)
 [![VS Code](https://img.shields.io/badge/VS%20Code-1.85%2B-007acc.svg?logo=visualstudiocode)](https://code.visualstudio.com/)
 
 **GitAxis** is a dedicated identity and profile manager for Visual Studio Code and VS Code Insiders. 
@@ -27,6 +27,16 @@ When working across multiple GitHub accounts on the same computer:
 
 ## Key Features
 
+- **Robust Process Cancellation & Adaptive Timeouts**: Full cancellation support using `AbortController` and `AbortSignal` directly terminates underlying Git processes. Per-operation adaptive timeouts (120s for remote operations, 15s for local commands).
+- **Comprehensive Safety Confirmations**:
+  - `git rebase` confirmation with commit history warning.
+  - `git checkout` & `git restore` warning when working tree has uncommitted/dirty changes.
+  - `git commit --amend` detection when amending commits that have already been published to upstream.
+  - `git tag -d` and `git remote remove` deletion confirmations.
+  - `github.pull-request.merge` and `github.issue.close` mutating confirmations.
+  - Enriched confirmation dialogs displaying Profile, Repository, Branch, and Remote details.
+- **Repository Detection Caching**: Added TTL-based repository discovery cache to eliminate redundant Git process spawns during status bar and webview refreshes.
+- **Atomic Profile Switching**: Ensures Git identity configuration successfully applies before persisting active profile state; cancelling global changes leaves active state intact.
 - **Folder Rules via `includeIf` ("Set-and-Forget")**: Define folder path rules (e.g. `~/work/**` &rarr; *Work*, `~/personal/**` &rarr; *Personal*). GitAxis generates include files in `~/.gitaxis/profiles/<profile>.gitconfig` and manages `[includeIf "gitdir:..."]` blocks in your global `~/.gitconfig` with full preview and 1-click clean removal.
 - **Show Effective Identity Inspector**: Inspect the active repository's effective `user.name`, `user.email`, `core.sshCommand`, GCM credentials, and remotes, alongside the deterministic rule (*Explicit Binding*, *Folder Rule*, *Profile Matcher*, or *Fallback*) that resolved them.
 - **Per-Repository Profile Binding**: Bind identities directly to repositories. Switching a profile in one repository never alters other repositories in multi-root workspaces.
@@ -84,7 +94,7 @@ When working across multiple GitHub accounts on the same computer:
 ### Method 1: Install from GitHub Releases (Recommended)
 
 1. Go to the [GitAxis GitHub Releases Page](https://github.com/MShrinath/GitAxis/releases).
-2. Download the latest `.vsix` package (e.g. `gitaxis-0.6.0.vsix`).
+2. Download the latest `.vsix` package (e.g. `gitaxis-0.7.0.vsix`).
 3. Open **VS Code** or **VS Code Insiders**.
 4. Open the Extensions view (`Ctrl+Shift+X` or `Cmd+Shift+X`).
 5. Click the **`···`** (Views and More Actions) menu in the top right of the Extensions panel.
@@ -98,10 +108,10 @@ If you have VS Code in your system `PATH`:
 
 ```powershell
 # For standard VS Code:
-code --install-extension gitaxis-0.6.0.vsix
+code --install-extension gitaxis-0.7.0.vsix
 
 # For VS Code Insiders:
-code-insiders --install-extension gitaxis-0.6.0.vsix
+code-insiders --install-extension gitaxis-0.7.0.vsix
 ```
 
 ---

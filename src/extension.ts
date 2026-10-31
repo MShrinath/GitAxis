@@ -202,6 +202,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   let sidebarProvider: SidebarViewProvider;
 
   const refreshAll = async () => {
+    repoDiscovery.clearCache();
     await updateStatusBar();
     if (sidebarProvider) {
       await sidebarProvider.refresh();

@@ -45,6 +45,9 @@ export class OperationManager implements IOperationManager {
   private commitMismatchPrompt?: CommitMismatchPromptFn;
   private guardCheckFailedPrompt?: GuardCheckFailedPromptFn;
   private guardMode: GuardMode = 'warn';
+  private activeControllers = new Map<OperationId, AbortController>();
+  private gitHandlers: Record<string, (input: any, options: GitExecOptions) => Promise<unknown>> = {};
+  private githubHandlers: Record<string, (input: any, ghClient: GitHubClient) => Promise<unknown>> = {};
 
   constructor(
     private profileManager: ProfileManager,
@@ -52,6 +55,7 @@ export class OperationManager implements IOperationManager {
     confirmationHandler?: ConfirmationHandler
   ) {
     this.confirmationHandler = confirmationHandler ?? new ConfirmationHandler();
+    this.initHandlerMaps();
   }
 
   public setGuardMode(mode: GuardMode): void {
@@ -132,8 +136,13 @@ export class OperationManager implements IOperationManager {
   }
 
   public async cancel(operationId: OperationId): Promise<void> {
+    const controller = this.activeControllers.get(operationId);
+    if (controller) {
+      controller.abort();
+      this.activeControllers.delete(operationId);
+    }
     const record = this.history.find(h => h.operation.id === operationId);
-    if (record && record.state === 'executing') {
+    if (record && (record.state === 'executing' || record.state === 'waiting-for-confirmation')) {
       record.state = 'cancelled';
     }
   }
@@ -149,7 +158,22 @@ export class OperationManager implements IOperationManager {
     };
     this.history.unshift(record);
 
+    const abortController = new AbortController();
+    this.activeControllers.set(operation.id, abortController);
+
     try {
+      if (abortController.signal.aborted) {
+        record.state = 'cancelled';
+        return this.createErrorResult(
+          operation.id,
+          'OPERATION_CANCELLED',
+          'Operation was cancelled by user',
+          'Operation was cancelled',
+          startedAt,
+          record
+        );
+      }
+
       // 1. Validation
       const validation = await this.validate(operation);
       if (!validation.valid) {
@@ -342,21 +366,83 @@ export class OperationManager implements IOperationManager {
         }
       }
 
-      // 4. Safety Assessment & Confirmation (PLAN.md Section 20 & 21)
+      // 4. Dynamic Safety Checks & Confirmation (Section 11)
       const safetyAssessment = OperationSafetyChecker.assessSafety(operation);
       operation.safety = safetyAssessment.safety;
       operation.confirmation = safetyAssessment.confirmation;
 
-      // Enrich Force Push confirmation with Profile, Repository, and Branch
-      if (operation.type === 'git.push' && (operation.input as any).force && safetyAssessment.confirmation.required) {
-        const repoPath = (operation.input as any).repositoryPath || 'workspace';
-        const repoName = repoPath.split(/[/\\]/).filter(Boolean).pop() || 'repository';
-        const branchName = (operation.input as any).branch || 'main';
-        const profileName = profile ? profile.name : 'Unknown';
-        safetyAssessment.confirmation.warning = `Profile: ${profileName}\nRepository: ${repoName}\nBranch: ${branchName}\n\nThis may overwrite remote history.`;
+      // 4a. Check dirty working tree for checkout and restore
+      if ((operation.type === 'git.checkout' || operation.type === 'git.restore') && repoPath) {
+        try {
+          const status = await this.gitClient.status(repoPath);
+          const hasDirty = !status.clean || (status.modified > 0) || (status.staged > 0);
+          if (hasDirty) {
+            safetyAssessment.confirmation = {
+              required: true,
+              reason: `${operation.type === 'git.checkout' ? 'Checkout' : 'Restore'} with uncommitted changes`,
+              warning: 'Your working tree contains uncommitted changes that may be overwritten or permanently lost.',
+            };
+          }
+        } catch (err) {
+          logger.debug(`Could not check dirty working tree before ${operation.type}: ${String(err)}`);
+        }
       }
 
+      // 4b. Check if amending a commit that is already pushed to upstream
+      if (((operation.type === 'git.commit' && (operation.input as any).amend) || operation.type === 'git.amend') && repoPath) {
+        try {
+          const remotes = await this.gitClient.getRemotes(repoPath);
+          if (remotes.length > 0) {
+            const { stdout } = await this.gitClient.exec(['log', '@{u}..HEAD', '--oneline'], { cwd: repoPath }).catch(() => ({ stdout: '' }));
+            if (stdout.trim() === '') {
+              safetyAssessment.confirmation = {
+                required: true,
+                reason: 'Amend published commit',
+                warning: 'The commit you are amending has already been pushed to remote. Amending will rewrite published history and require force-pushing.',
+              };
+            }
+          }
+        } catch (err) {
+          logger.debug(`Could not verify upstream push status for amend: ${String(err)}`);
+        }
+      }
+
+      // 4c. Check repository creation target owner against active profile
+      if (operation.type === 'github.repository.create') {
+        const targetOwner = (operation.input as any).owner;
+        if (targetOwner && profile && !this.matchesRemoteOwner(targetOwner, profile)) {
+          safetyAssessment.confirmation = {
+            required: true,
+            reason: `Create repository under organization "${targetOwner}"`,
+            warning: `Active profile "${profile.name}" (@${profile.github?.username || 'none'}) is not configured for organization "${targetOwner}".`,
+          };
+        }
+      }
+
+      // 4d. Enrich all confirmations with Profile, Repository, Branch, and Remote details
       if (safetyAssessment.confirmation.required) {
+        const repoName = repoPath ? repoPath.split(/[/\\]/).filter(Boolean).pop() || 'repository' : undefined;
+        const profileName = profile ? profile.name : undefined;
+        let branchName = (operation.input as any)?.branch;
+        if (!branchName && repoPath) {
+          try {
+            branchName = await this.gitClient.getCurrentBranch(repoPath);
+          } catch {}
+        }
+        const remoteName = (operation.input as any)?.remote || 'origin';
+
+        const contextLines = [
+          profileName ? `Profile: ${profileName}` : '',
+          repoName ? `Repository: ${repoName}` : '',
+          branchName ? `Branch: ${branchName}` : '',
+          remoteName ? `Remote: ${remoteName}` : '',
+        ].filter(Boolean);
+
+        if (contextLines.length > 0) {
+          const originalWarning = safetyAssessment.confirmation.warning || '';
+          safetyAssessment.confirmation.warning = `${contextLines.join('\n')}\n\n${originalWarning}`;
+        }
+
         record.state = 'waiting-for-confirmation';
         const confirmed = await this.confirmationHandler.requestConfirmation(
           safetyAssessment.confirmation.reason,
@@ -376,7 +462,11 @@ export class OperationManager implements IOperationManager {
         }
       }
 
-      // 5. Resolve Authentication (Runtime Only)
+      // 5. Setup Per-Operation Timeouts (Section 10)
+      const isRemoteOperation = ['git.push', 'git.pull', 'git.fetch', 'git.clone'].includes(operation.type);
+      const operationTimeout = isRemoteOperation ? 120000 : 15000;
+
+      // 6. Resolve Authentication (Runtime Only)
       let auth: ResolvedAuthentication | undefined;
       if (profile) {
         const authManager = this.profileManager.getAuthManager();
@@ -385,13 +475,29 @@ export class OperationManager implements IOperationManager {
         }
       }
 
-      // 6. Execute Operation
+      // 7. Execute Operation via Handler Maps
       record.state = 'executing';
-      const data = await this.dispatchExecution<T>(operation, auth);
+      const data = await this.dispatchExecution<T>(operation, auth, {
+        signal: abortController.signal,
+        timeout: operationTimeout,
+        cwd: repoPath,
+      });
 
       // Clean up runtime credentials
       if (auth) {
         auth.credential = undefined;
+      }
+
+      if (abortController.signal.aborted) {
+        record.state = 'cancelled';
+        return this.createErrorResult(
+          operation.id,
+          'OPERATION_CANCELLED',
+          'Operation was cancelled by user',
+          'Operation was cancelled',
+          startedAt,
+          record
+        );
       }
 
       const completedAt = new Date().toISOString();
@@ -415,11 +521,47 @@ export class OperationManager implements IOperationManager {
       logger.error(`Operation ${operation.type} failed: ${errorStr}`);
 
       let errorCode: OperationErrorCode = 'UNKNOWN';
-      if (errorStr.includes('not a git repository')) errorCode = 'NOT_A_REPOSITORY';
-      else if (errorStr.includes('Authentication failed') || errorStr.includes('auth')) errorCode = 'AUTHENTICATION_FAILED';
-      else if (errorStr.includes('Merge conflict') || errorStr.includes('conflict')) errorCode = 'MERGE_CONFLICT';
-      else if (errorStr.includes('remote rejected')) errorCode = 'REMOTE_REJECTED';
-      else if (errorStr.includes('nothing to commit')) errorCode = 'NOTHING_TO_COMMIT';
+      let retryable = false;
+
+      if (abortController.signal.aborted || errorStr.includes('cancelled') || errorStr.includes('AbortError')) {
+        errorCode = 'OPERATION_CANCELLED';
+        record.state = 'cancelled';
+        retryable = false;
+      } else if (errorStr.includes('not a git repository')) {
+        errorCode = 'NOT_A_REPOSITORY';
+        retryable = false;
+      } else if (
+        errorStr.includes('Authentication failed') ||
+        errorStr.includes('Permission to') ||
+        errorStr.includes('Invalid credentials') ||
+        errorStr.includes('could not read Username')
+      ) {
+        errorCode = 'AUTHENTICATION_FAILED';
+        retryable = false;
+      } else if (
+        errorStr.includes('Merge conflict') ||
+        errorStr.includes('CONFLICT (content)') ||
+        errorStr.includes('Automatic merge failed')
+      ) {
+        errorCode = 'MERGE_CONFLICT';
+        retryable = false;
+      } else if (errorStr.includes('remote rejected') || errorStr.includes('pre-receive hook declined')) {
+        errorCode = 'REMOTE_REJECTED';
+        retryable = false;
+      } else if (errorStr.includes('nothing to commit')) {
+        errorCode = 'NOTHING_TO_COMMIT';
+        retryable = false;
+      } else if (
+        errorStr.includes('Could not resolve host') ||
+        errorStr.includes('Failed to connect') ||
+        errorStr.includes('Connection timed out') ||
+        errorStr.includes('remote end hung up unexpectedly') ||
+        errorStr.includes('ETIMEDOUT') ||
+        errorStr.includes('ECONNRESET')
+      ) {
+        errorCode = 'NETWORK_ERROR';
+        retryable = true;
+      }
 
       const result: OperationResult<T> = {
         operationId: operation.id,
@@ -428,7 +570,7 @@ export class OperationManager implements IOperationManager {
           code: errorCode,
           message: errorStr,
           userMessage: `Failed to execute ${operation.type}: ${errorStr}`,
-          retryable: true,
+          retryable,
         },
         warnings: warnings.length > 0 ? warnings : undefined,
         startedAt,
@@ -439,14 +581,20 @@ export class OperationManager implements IOperationManager {
       record.result = result;
       record.durationMs = Date.now() - startTime;
       return result;
+    } finally {
+      this.activeControllers.delete(operation.id);
     }
   }
 
-  private async dispatchExecution<T>(operation: Operation, auth?: ResolvedAuthentication): Promise<T> {
+  private async dispatchExecution<T>(
+    operation: Operation,
+    auth?: ResolvedAuthentication,
+    baseOptions: GitExecOptions = {}
+  ): Promise<T> {
     const input = operation.input as any;
 
     if (operation.type.startsWith('git.')) {
-      return this.dispatchGitOperation<T>(operation.type, input, auth);
+      return this.dispatchGitOperation<T>(operation.type, input, auth, baseOptions);
     }
 
     if (operation.type.startsWith('github.')) {
@@ -460,62 +608,86 @@ export class OperationManager implements IOperationManager {
     throw new Error(`Unknown operation type: ${operation.type}`);
   }
 
-  private async dispatchGitOperation<T>(type: string, input: any, auth?: ResolvedAuthentication): Promise<T> {
-    const execOptions: GitExecOptions = {};
+  private async dispatchGitOperation<T>(
+    type: string,
+    input: any,
+    auth?: ResolvedAuthentication,
+    baseOptions: GitExecOptions = {}
+  ): Promise<T> {
+    const execOptions: GitExecOptions = { ...baseOptions };
     if (auth?.credential) {
       const username = auth.username || '';
       const authString = username ? `${username}:${auth.credential}` : `:${auth.credential}`;
       const base64Auth = Buffer.from(authString).toString('base64');
       execOptions.env = {
+        ...(baseOptions.env || {}),
         GIT_CONFIG_COUNT: '1',
         GIT_CONFIG_KEY_0: 'http.extraheader',
         GIT_CONFIG_VALUE_0: `AUTHORIZATION: basic ${base64Auth}`,
       };
     }
 
-    switch (type) {
-      case 'git.status':
-        return (await this.gitClient.status(input.repositoryPath)) as unknown as T;
-      case 'git.diff':
-        return (await this.gitClient.diff(input.repositoryPath, input.staged, input.path)) as unknown as T;
-      case 'git.add':
+    const handler = this.gitHandlers[type];
+    if (handler) {
+      return (await handler(input, execOptions)) as T;
+    }
+
+    throw new Error(`Unhandled Git operation: ${type}`);
+  }
+
+  private async dispatchGitHubOperation<T>(type: string, input: any, ghClient: GitHubClient): Promise<T> {
+    const handler = this.githubHandlers[type];
+    if (handler) {
+      return (await handler(input, ghClient)) as T;
+    }
+
+    throw new Error(`Unhandled GitHub operation: ${type}`);
+  }
+
+  private initHandlerMaps(): void {
+    this.gitHandlers = {
+      'git.status': (input, opts) => this.gitClient.status(input.repositoryPath),
+      'git.diff': (input, opts) => this.gitClient.diff(input.repositoryPath, input.staged, input.path),
+      'git.add': async (input, opts) => {
         await this.gitClient.add(input.repositoryPath, input.paths || [], input.all);
-        return true as unknown as T;
-      case 'git.restore':
+        return true;
+      },
+      'git.restore': async (input, opts) => {
         await this.gitClient.restore(input.repositoryPath, input.paths, input.staged);
-        return true as unknown as T;
-      case 'git.commit':
-        return (await this.gitClient.commit(input.repositoryPath, input.message, input.amend, input.signoff)) as unknown as T;
-      case 'git.amend':
-        return (await this.gitClient.amend(input.repositoryPath, input.message, input.noEdit)) as unknown as T;
-      case 'git.reset':
+        return true;
+      },
+      'git.commit': (input, opts) => this.gitClient.commit(input.repositoryPath, input.message, input.amend, input.signoff),
+      'git.amend': (input, opts) => this.gitClient.amend(input.repositoryPath, input.message, input.noEdit),
+      'git.reset': async (input, opts) => {
         await this.gitClient.reset(input.repositoryPath, input.ref, input.mode);
-        return true as unknown as T;
-      case 'git.branch.create':
+        return true;
+      },
+      'git.branch.create': async (input, opts) => {
         await this.gitClient.createBranch(input.repositoryPath, input.name, input.startPoint, input.checkout);
-        return true as unknown as T;
-      case 'git.branch.delete':
+        return true;
+      },
+      'git.branch.delete': async (input, opts) => {
         await this.gitClient.deleteBranch(input.repositoryPath, input.name, input.force);
-        return true as unknown as T;
-      case 'git.branch.rename':
+        return true;
+      },
+      'git.branch.rename': async (input, opts) => {
         await this.gitClient.renameBranch(input.repositoryPath, input.oldName, input.newName);
-        return true as unknown as T;
-      case 'git.checkout':
+        return true;
+      },
+      'git.checkout': async (input, opts) => {
         await this.gitClient.checkout(input.repositoryPath, input.ref, input.createBranch);
-        return true as unknown as T;
-      case 'git.switch':
+        return true;
+      },
+      'git.switch': async (input, opts) => {
         await this.gitClient.switchBranch(input.repositoryPath, input.branch, input.create);
-        return true as unknown as T;
-      case 'git.merge':
-        return (await this.gitClient.merge(input.repositoryPath, input.branch, input.noFastForward, input.squash)) as unknown as T;
-      case 'git.rebase':
-        return (await this.gitClient.rebase(input.repositoryPath, input.onto)) as unknown as T;
-      case 'git.fetch':
-        return (await this.gitClient.fetch(input.repositoryPath, input.remote, input.prune, input.tags, execOptions)) as unknown as T;
-      case 'git.pull':
-        return (await this.gitClient.pull(input.repositoryPath, input.remote, input.branch, input.rebase, execOptions)) as unknown as T;
-      case 'git.push':
-        return (await this.gitClient.push(
+        return true;
+      },
+      'git.merge': (input, opts) => this.gitClient.merge(input.repositoryPath, input.branch, input.noFastForward, input.squash),
+      'git.rebase': (input, opts) => this.gitClient.rebase(input.repositoryPath, input.onto),
+      'git.fetch': (input, opts) => this.gitClient.fetch(input.repositoryPath, input.remote, input.prune, input.tags, opts),
+      'git.pull': (input, opts) => this.gitClient.pull(input.repositoryPath, input.remote, input.branch, input.rebase, opts),
+      'git.push': (input, opts) =>
+        this.gitClient.push(
           input.repositoryPath,
           input.remote,
           input.branch,
@@ -523,85 +695,70 @@ export class OperationManager implements IOperationManager {
           input.force,
           input.forceWithLease,
           input.tags,
-          execOptions
-        )) as unknown as T;
-      case 'git.clone':
-        await this.gitClient.clone(input.url, input.destinationPath, input.branch, input.depth, execOptions);
-        return true as unknown as T;
-      case 'git.init':
+          opts
+        ),
+      'git.clone': async (input, opts) => {
+        await this.gitClient.clone(input.url, input.destinationPath, input.branch, input.depth, opts);
+        return true;
+      },
+      'git.init': async (input, opts) => {
         await this.gitClient.init(input.repositoryPath, input.bare);
-        return true as unknown as T;
-      case 'git.stash.create':
-        return (await this.gitClient.stash(input.repositoryPath, input.message, input.includeUntracked)) as unknown as T;
-      case 'git.stash.apply':
-        return (await this.gitClient.stashApply(input.repositoryPath, input.stash)) as unknown as T;
-
-      case 'git.stash.pop':
-        return (await this.gitClient.stashPop(input.repositoryPath, input.stash)) as unknown as T;
-      case 'git.stash.drop':
-        return (await this.gitClient.stashDrop(input.repositoryPath, input.stash)) as unknown as T;
-      case 'git.tag.create':
+        return true;
+      },
+      'git.stash.create': (input, opts) => this.gitClient.stash(input.repositoryPath, input.message, input.includeUntracked),
+      'git.stash.apply': (input, opts) => this.gitClient.stashApply(input.repositoryPath, input.stash),
+      'git.stash.pop': (input, opts) => this.gitClient.stashPop(input.repositoryPath, input.stash),
+      'git.stash.drop': (input, opts) => this.gitClient.stashDrop(input.repositoryPath, input.stash),
+      'git.tag.create': async (input, opts) => {
         await this.gitClient.createTag(input.repositoryPath, input.name, input.target, input.message);
-        return true as unknown as T;
-      case 'git.tag.delete':
+        return true;
+      },
+      'git.tag.delete': async (input, opts) => {
         await this.gitClient.deleteTag(input.repositoryPath, input.name);
-        return true as unknown as T;
-      case 'git.remote.add':
+        return true;
+      },
+      'git.remote.add': async (input, opts) => {
         await this.gitClient.addRemote(input.repositoryPath, input.name, input.url);
-        return true as unknown as T;
-      case 'git.remote.remove':
+        return true;
+      },
+      'git.remote.remove': async (input, opts) => {
         await this.gitClient.removeRemote(input.repositoryPath, input.name);
-        return true as unknown as T;
-      case 'git.remote.set-url':
+        return true;
+      },
+      'git.remote.set-url': async (input, opts) => {
         await this.gitClient.setRemoteUrl(input.repositoryPath, input.name, input.url, input.push);
-        return true as unknown as T;
-      case 'git.log':
-        return (await this.gitClient.log(input.repositoryPath, input.maxCount, input.branch, input.path)) as unknown as T;
-      case 'git.blame':
-        return (await this.gitClient.blame(input.repositoryPath, input.path, input.startLine, input.endLine)) as unknown as T;
-      default:
-        throw new Error(`Unhandled Git operation: ${type}`);
-    }
-  }
+        return true;
+      },
+      'git.log': (input, opts) => this.gitClient.log(input.repositoryPath, input.maxCount, input.branch, input.path),
+      'git.blame': (input, opts) => this.gitClient.blame(input.repositoryPath, input.path, input.startLine, input.endLine),
+    };
 
-  private async dispatchGitHubOperation<T>(type: string, input: any, ghClient: GitHubClient): Promise<T> {
-    switch (type) {
-      case 'github.account.get':
-        return (await ghClient.getCurrentUser()) as unknown as T;
-      case 'github.repository.get':
-        return (await ghClient.getRepository(input.owner, input.repository)) as unknown as T;
-      case 'github.repository.list':
-        return (await ghClient.listRepositories(input.owner)) as unknown as T;
-      case 'github.repository.create':
-        return (await ghClient.createRepository(input.name, input.description, input.private)) as unknown as T;
-      case 'github.repository.delete':
-        await ghClient.deleteRepository(input.owner, input.repository);
-        return true as unknown as T;
-      case 'github.repository.fork':
-        return (await ghClient.forkRepository(input.owner, input.repository)) as unknown as T;
-      case 'github.issue.create':
-        return (await ghClient.createIssue(input.owner, input.repository, input.title, input.body, input.labels)) as unknown as T;
-      case 'github.issue.list':
-        return (await ghClient.listIssues(input.owner, input.repository, input.state)) as unknown as T;
-      case 'github.issue.close':
-        await ghClient.closeIssue(input.owner, input.repository, input.number);
-        return true as unknown as T;
-      case 'github.pull-request.create':
-        return (await ghClient.createPullRequest(input.owner, input.repository, input.title, input.head, input.base, input.body, input.draft)) as unknown as T;
-      case 'github.pull-request.list':
-        return (await ghClient.listPullRequests(input.owner, input.repository, input.state)) as unknown as T;
-      case 'github.pull-request.merge':
-        await ghClient.mergePullRequest(input.owner, input.repository, input.number, input.method, input.commitMessage);
-        return true as unknown as T;
-      case 'github.actions.list':
-        return (await ghClient.listActions(input.owner, input.repository)) as unknown as T;
-      case 'github.release.create':
-        return (await ghClient.createRelease(input.owner, input.repository, input.tag, input.name, input.body, input.draft, input.prerelease)) as unknown as T;
-      case 'github.release.list':
-        return (await ghClient.listReleases(input.owner, input.repository)) as unknown as T;
-      default:
-        throw new Error(`Unhandled GitHub operation: ${type}`);
-    }
+    this.githubHandlers = {
+      'github.account.get': (_input, gh) => gh.getCurrentUser(),
+      'github.repository.get': (input, gh) => gh.getRepository(input.owner, input.repository),
+      'github.repository.list': (input, gh) => gh.listRepositories(input.owner),
+      'github.repository.create': (input, gh) => gh.createRepository(input.name, input.description, input.private),
+      'github.repository.delete': async (input, gh) => {
+        await gh.deleteRepository(input.owner, input.repository);
+        return true;
+      },
+      'github.repository.fork': (input, gh) => gh.forkRepository(input.owner, input.repository),
+      'github.issue.create': (input, gh) => gh.createIssue(input.owner, input.repository, input.title, input.body, input.labels),
+      'github.issue.list': (input, gh) => gh.listIssues(input.owner, input.repository, input.state),
+      'github.issue.close': async (input, gh) => {
+        await gh.closeIssue(input.owner, input.repository, input.number);
+        return true;
+      },
+      'github.pull-request.create': (input, gh) => gh.createPullRequest(input.owner, input.repository, input.title, input.head, input.base, input.body, input.draft),
+      'github.pull-request.list': (input, gh) => gh.listPullRequests(input.owner, input.repository, input.state),
+      'github.pull-request.merge': async (input, gh) => {
+        await gh.mergePullRequest(input.owner, input.repository, input.number, input.method, input.commitMessage);
+        return true;
+      },
+      'github.actions.list': (input, gh) => gh.listActions(input.owner, input.repository),
+      'github.release.create': (input, gh) => gh.createRelease(input.owner, input.repository, input.tag, input.name, input.body, input.draft, input.prerelease),
+      'github.release.list': (input, gh) => gh.listReleases(input.owner, input.repository),
+    };
   }
 
   private createErrorResult<T>(

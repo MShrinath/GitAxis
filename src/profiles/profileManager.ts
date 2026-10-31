@@ -96,7 +96,10 @@ export class ProfileManager {
 
     // Apply identity first (atomic)
     if (repositoryPath || profile.git.scope === 'global') {
-      await this.applyIdentityToRepository(profile, repositoryPath, confirmGlobalChange);
+      const applied = await this.applyIdentityToRepository(profile, repositoryPath, confirmGlobalChange);
+      if (applied === false) {
+        throw new Error(`Profile switch to "${profile.name}" was cancelled by user.`);
+      }
     }
 
     // If repository path was provided, associate this repo with the profile so switching applies to current repo
@@ -120,7 +123,7 @@ export class ProfileManager {
     profile: GitProfile,
     repositoryPath?: string,
     confirmGlobalChange?: () => Promise<boolean>
-  ): Promise<void> {
+  ): Promise<boolean> {
     try {
       // 1. Resolve targetPath and check if repositoryPath points to a valid git repository
       let isRepo = false;
@@ -142,7 +145,7 @@ export class ProfileManager {
           const confirmed = await confirmGlobalChange();
           if (!confirmed) {
             logger.warn(`User cancelled global Git identity update for profile "${profile.name}".`);
-            return;
+            return false;
           }
         }
         await this.gitClient.setGlobalConfig('user.name', profile.git.name);
@@ -280,6 +283,7 @@ export class ProfileManager {
           }
         }
       }
+      return true;
     } catch (err) {
       logger.error(`Failed to apply git identity to repository: ${String(err)}`);
       throw err;

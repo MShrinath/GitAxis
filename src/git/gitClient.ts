@@ -15,6 +15,7 @@ export interface GitExecOptions {
   cwd?: string;
   timeout?: number;
   env?: Record<string, string>;
+  signal?: AbortSignal;
 }
 
 export class GitClient {
@@ -25,6 +26,7 @@ export class GitClient {
       const result = await execFileAsync(this.gitPath, args, {
         cwd: options.cwd,
         timeout: options.timeout ?? 30000,
+        signal: options.signal,
         env: {
           ...process.env,
           ...(options.env || {}),
@@ -34,6 +36,9 @@ export class GitClient {
       });
       return { stdout: result.stdout.trim(), stderr: result.stderr.trim() };
     } catch (err: unknown) {
+      if (options.signal?.aborted || (err as { name?: string })?.name === 'AbortError') {
+        throw new Error('Git operation was cancelled by user');
+      }
       const error = err as { stdout?: string; stderr?: string; message?: string; code?: number };
       const stdout = error.stdout?.trim() || '';
       const stderr = error.stderr?.trim() || error.message || '';

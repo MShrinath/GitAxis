@@ -2,7 +2,7 @@
   "name": "gitaxis",
   "displayName": "GitAxis - Git & GitHub Profile Manager",
   "description": "Multi-profile Git and GitHub control center for VS Code",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "publisher": "gitaxis",
   "icon": "media/icon.png",
   "repository": {
@@ -261,6 +261,7 @@
     "build": "node esbuild.js --production",
     "watch": "node esbuild.js --watch",
     "compile": "tsc -p ./",
+    "typecheck": "tsc --noEmit",
     "test": "mocha -r ts-node/register \"test/**/*.test.ts\"",
     "package": "vsce package --no-dependencies"
   },

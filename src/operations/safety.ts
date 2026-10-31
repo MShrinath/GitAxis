@@ -69,6 +69,66 @@ export class OperationSafetyChecker {
       };
     }
 
+    // 6. Git Rebase (Section 11)
+    if (type === 'git.rebase') {
+      return {
+        safety: 'mutating',
+        confirmation: {
+          required: true,
+          reason: `Rebase current branch onto "${input.onto || 'upstream'}"`,
+          warning: 'Rebasing rewrites commit history on the current branch.',
+        },
+      };
+    }
+
+    // 7. Git Tag Delete (Section 11)
+    if (type === 'git.tag.delete') {
+      return {
+        safety: 'mutating',
+        confirmation: {
+          required: true,
+          reason: `Delete tag "${input.name}"`,
+          warning: 'The tag reference will be permanently removed.',
+        },
+      };
+    }
+
+    // 8. Git Remote Remove (Section 11)
+    if (type === 'git.remote.remove') {
+      return {
+        safety: 'mutating',
+        confirmation: {
+          required: true,
+          reason: `Remove remote "${input.name}"`,
+          warning: 'Remote configuration and remote-tracking branches will be deleted.',
+        },
+      };
+    }
+
+    // 9. GitHub Pull Request Merge (Section 11)
+    if (type === 'github.pull-request.merge') {
+      return {
+        safety: 'mutating',
+        confirmation: {
+          required: true,
+          reason: `Merge Pull Request #${input.number}`,
+          warning: `This will merge PR #${input.number} into the target branch.`,
+        },
+      };
+    }
+
+    // 10. GitHub Issue Close (Section 11)
+    if (type === 'github.issue.close') {
+      return {
+        safety: 'mutating',
+        confirmation: {
+          required: true,
+          reason: `Close GitHub Issue #${input.number}`,
+          warning: `This will close issue #${input.number}.`,
+        },
+      };
+    }
+
     // Read-only operations:
     const readOnlyTypes: string[] = [
       'git.status',
