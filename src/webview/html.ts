@@ -321,17 +321,17 @@ export class HtmlBuilder {
 
       <div class="form-group">
         <label class="form-label" for="form-git-name">Git Author Name <span class="req">*</span></label>
-        <input type="text" id="form-git-name" class="input-text" placeholder="e.g. John Doe" autocomplete="off" />
+        <input type="text" id="form-git-name" class="input-text" placeholder="e.g. Work User" autocomplete="off" />
       </div>
 
       <div class="form-group">
         <label class="form-label" for="form-git-email">Git Email <span class="req">*</span></label>
-        <input type="email" id="form-git-email" class="input-text" placeholder="e.g. john@company.com" autocomplete="off" />
+        <input type="email" id="form-git-email" class="input-text" placeholder="e.g. work@company.com" autocomplete="off" />
       </div>
 
       <div class="form-group">
         <label class="form-label" for="form-gh-user">GitHub Username <span class="opt">(optional)</span></label>
-        <input type="text" id="form-gh-user" class="input-text" placeholder="e.g. john-work" autocomplete="off" />
+        <input type="text" id="form-gh-user" class="input-text" placeholder="e.g. work-user" autocomplete="off" />
       </div>
 
       <div class="form-group">
