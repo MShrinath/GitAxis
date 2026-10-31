@@ -151,10 +151,12 @@ export class PersistentProfileStore implements ProfileStore {
       },
       github:
         input.github !== undefined
-          ? {
-              host: input.github.host?.trim() || current.github?.host || 'github.com',
-              username: input.github.username ? input.github.username.trim() : current.github?.username || '',
-            }
+          ? input.github.username !== undefined && !input.github.username.trim()
+            ? undefined
+            : {
+                host: input.github.host?.trim() || current.github?.host || 'github.com',
+                username: input.github.username ? input.github.username.trim() : current.github?.username || '',
+              }
           : current.github,
       authentication: {
         ...current.authentication,

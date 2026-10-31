@@ -67,9 +67,16 @@ describe('PersistentProfileStore', () => {
     const updated = await store.update(p1.id, {
       name: 'p1-updated',
       git: { email: 'u1-new@test.com' },
+      github: { host: 'github.com', username: 'u1-gh' },
     });
     assert.strictEqual(updated.name, 'p1-updated');
     assert.strictEqual(updated.git.email, 'u1-new@test.com');
+    assert.strictEqual(updated.github?.username, 'u1-gh');
+
+    const clearedGh = await store.update(p1.id, {
+      github: { username: '' },
+    });
+    assert.strictEqual(clearedGh.github, undefined);
   });
 
   it('should manage repository associations', async () => {

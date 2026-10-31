@@ -88,16 +88,26 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   await updateStatusBar();
 
-  // 4. Sidebar Webview Provider
-  const sidebarProvider = new SidebarViewProvider(context.extensionUri, profileManager, repoDiscovery);
-  context.subscriptions.push(
-    vscode.window.registerWebviewViewProvider(SidebarViewProvider.viewType, sidebarProvider)
-  );
+  let sidebarProvider: SidebarViewProvider;
 
   const refreshAll = async () => {
     await updateStatusBar();
-    await sidebarProvider.refresh();
+    if (sidebarProvider) {
+      await sidebarProvider.refresh();
+    }
   };
+
+  // 4. Sidebar Webview Provider
+  sidebarProvider = new SidebarViewProvider(
+    context.extensionUri,
+    profileManager,
+    repoDiscovery,
+    systemDiscovery,
+    refreshAll
+  );
+  context.subscriptions.push(
+    vscode.window.registerWebviewViewProvider(SidebarViewProvider.viewType, sidebarProvider)
+  );
 
   // 5. Register Commands
   context.subscriptions.push(

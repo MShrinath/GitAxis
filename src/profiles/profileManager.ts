@@ -128,6 +128,10 @@ export class ProfileManager {
     await this.store.setAssociation(repoPath, profileId);
   }
 
+  public async disassociateRepository(repoPath: string): Promise<void> {
+    await this.store.removeAssociation(repoPath);
+  }
+
   public async getAssociation(repoPath: string): Promise<ProfileId | undefined> {
     return this.store.getAssociation(repoPath);
   }
