@@ -4,6 +4,12 @@ import { promisify } from 'util';
 const execFileAsync = promisify(execFile);
 
 export class GitHubCliAuth {
+  private tokenCache = new Map<string, { token: string; expiresAt: number }>();
+
+  public clearTokenCache(): void {
+    this.tokenCache.clear();
+  }
+
   public async isAvailable(): Promise<boolean> {
     try {
       await execFileAsync('gh', ['--version'], { timeout: 3000 });
@@ -14,6 +20,12 @@ export class GitHubCliAuth {
   }
 
   public async getToken(hostname?: string, username?: string): Promise<string | undefined> {
+    const cacheKey = `${hostname || 'github.com'}:${username || 'default'}`;
+    const cached = this.tokenCache.get(cacheKey);
+    if (cached && Date.now() < cached.expiresAt) {
+      return cached.token;
+    }
+
     try {
       const args = ['auth', 'token'];
       if (hostname) {
@@ -24,7 +36,11 @@ export class GitHubCliAuth {
       }
       const { stdout } = await execFileAsync('gh', args, { timeout: 5000 });
       const token = stdout.trim();
-      return token.length > 0 ? token : undefined;
+      if (token.length > 0) {
+        this.tokenCache.set(cacheKey, { token, expiresAt: Date.now() + 15000 });
+        return token;
+      }
+      return undefined;
     } catch {
       return undefined;
     }

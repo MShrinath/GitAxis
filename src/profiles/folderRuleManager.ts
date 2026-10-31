@@ -1,9 +1,11 @@
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+import { execFileSync } from 'child_process';
 import { GitProfile, GitRemote } from '../contracts';
 import { Platform } from '../utils/platform';
 import { logger } from '../utils/logger';
+import { Validation } from '../utils/validation';
 
 export const GITAXIS_CONFIG_START = '# GitAxis Start - Managed by GitAxis VS Code Extension';
 export const GITAXIS_CONFIG_END = '# GitAxis End';
@@ -171,7 +173,11 @@ export class FolderRuleManager {
    * Generate content for a single profile's .gitconfig include file.
    */
   public generateProfileGitConfig(profile: GitProfile): string {
-    const cleanName = profile.git.name.replace(/[\r\n]+/g, ' ').replace(/"/g, '\\"');
+    const rawName = profile.git.name.replace(/[\r\n]+/g, ' ');
+    const needsQuotes = /[#;\\"]/.test(rawName) || /^\s|\s$/.test(rawName);
+    const cleanName = needsQuotes
+      ? `"${rawName.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`
+      : rawName;
     const cleanEmail = profile.git.email.replace(/[\r\n]+/g, '').trim();
     const lines: string[] = [
       `# GitAxis Profile: ${profile.name}`,
@@ -190,25 +196,74 @@ export class FolderRuleManager {
         resolvedKeyPath = path.join(this.homedir, resolvedKeyPath.slice(1));
       }
       const normalizedKeyPath = Platform.normalizePath(resolvedKeyPath);
-      const sshCommand = cleanKeyPath.startsWith('ssh ')
-        ? (cleanKeyPath.includes('-o IdentitiesOnly=yes') ? cleanKeyPath : `${cleanKeyPath} -o IdentitiesOnly=yes`)
-        : `ssh -i "${normalizedKeyPath}" -o IdentitiesOnly=yes`;
+      let sshCommand: string;
+      if (cleanKeyPath.startsWith('ssh ')) {
+        const withOpts = cleanKeyPath.includes('-o IdentitiesOnly=yes')
+          ? cleanKeyPath
+          : `${cleanKeyPath} -o IdentitiesOnly=yes`;
+        sshCommand = withOpts.replace(/"/g, '\\"');
+      } else {
+        sshCommand = `ssh -i \\"${normalizedKeyPath}\\" -o IdentitiesOnly=yes`;
+      }
 
       lines.push(`[core]`);
       lines.push(`\tsshCommand = ${sshCommand}`);
     }
 
     // Credential username
-    const host = (profile.github?.host?.trim() || 'github.com')
-      .replace(/^https?:\/\//i, '')
-      .replace(/\/+$/, '') || 'github.com';
+    const rawHost = profile.github?.host?.trim() || 'github.com';
+    const host = rawHost.replace(/^https?:\/\//i, '').replace(/\/+$/, '') || 'github.com';
     const ghUsername = profile.github?.username?.trim();
-    if (ghUsername) {
+    if (ghUsername && Validation.isValidHost(host)) {
       lines.push(`[credential "https://${host}"]`);
       lines.push(`\tusername = ${ghUsername}`);
     }
 
     return lines.join('\n') + '\n';
+  }
+
+  /**
+   * Write an include file for a profile using git config --file for canonical escaping,
+   * falling back to generateProfileGitConfig if git command fails.
+   */
+  public async writeProfileConfigFile(filePath: string, profile: GitProfile): Promise<void> {
+    try {
+      if (fs.existsSync(filePath)) {
+        await fs.promises.unlink(filePath);
+      }
+
+      const runGitConfig = (key: string, val: string) => {
+        execFileSync('git', ['config', '--file', filePath, key, val], { timeout: 5000 });
+      };
+
+      runGitConfig('user.name', profile.git.name);
+      runGitConfig('user.email', profile.git.email);
+
+      const rawSshKeyPath = (profile.authentication as { sshKeyPath?: string })?.sshKeyPath?.trim();
+      if (profile.authentication.type === 'ssh' && rawSshKeyPath) {
+        const cleanKeyPath = rawSshKeyPath.replace(/^["']|["']$/g, '').trim();
+        let resolvedKeyPath = cleanKeyPath;
+        if (resolvedKeyPath.startsWith('~')) {
+          resolvedKeyPath = path.join(this.homedir, resolvedKeyPath.slice(1));
+        }
+        const normalizedKeyPath = Platform.normalizePath(resolvedKeyPath);
+        const sshCommand = cleanKeyPath.startsWith('ssh ')
+          ? (cleanKeyPath.includes('-o IdentitiesOnly=yes') ? cleanKeyPath : `${cleanKeyPath} -o IdentitiesOnly=yes`)
+          : `ssh -i "${normalizedKeyPath}" -o IdentitiesOnly=yes`;
+        runGitConfig('core.sshCommand', sshCommand);
+      }
+
+      const rawHost = profile.github?.host?.trim() || 'github.com';
+      const host = rawHost.replace(/^https?:\/\//i, '').replace(/\/+$/, '') || 'github.com';
+      const ghUsername = profile.github?.username?.trim();
+      if (ghUsername && Validation.isValidHost(host)) {
+        runGitConfig(`credential.https://${host}.username`, ghUsername);
+      }
+    } catch (err) {
+      logger.warn(`Fallback to string generation for ${filePath}: ${String(err)}`);
+      const content = this.generateProfileGitConfig(profile);
+      await fs.promises.writeFile(filePath, content, 'utf8');
+    }
   }
 
   /**
@@ -357,8 +412,7 @@ export class FolderRuleManager {
     for (const profile of profiles) {
       if (!profile.folderRules || profile.folderRules.length === 0) continue;
       const filePath = this.getProfileConfigPath(profile);
-      const content = this.generateProfileGitConfig(profile);
-      await fs.promises.writeFile(filePath, content, 'utf8');
+      await this.writeProfileConfigFile(filePath, profile);
       filesWritten.push(filePath);
       logger.info(`Wrote GitAxis include config for ${profile.name} at ${filePath}`);
     }

@@ -44,7 +44,6 @@ export function registerProfileCommands(
       }
 
       const repoRoot = await getCurrentRepoRoot();
-      const boundId = repoRoot ? await profileManager.getAssociation(repoRoot) : undefined;
       const resolved = repoRoot ? await profileManager.resolveProfileForRepository(repoRoot) : undefined;
       const active = resolved?.profile || (await profileManager.getActiveProfile());
 
@@ -58,12 +57,9 @@ export function registerProfileCommands(
         items.push({ label: 'Profiles', kind: vscode.QuickPickItemKind.Separator });
         for (const p of profiles) {
           const isCurrent = p.id === active?.id;
-          const isBound = p.id === boundId;
           const isFolderMatch = resolved?.source === 'folder-rule' && resolved.profile.id === p.id;
           let badge = '';
-          if (isBound) {
-            badge = ' (Bound to repo)';
-          } else if (isFolderMatch) {
+          if (isFolderMatch) {
             badge = ` (Folder Rule: ${resolved.folderRule || ''})`;
           }
           const label = `${isCurrent ? '$(check) ' : ''}${p.name}${badge}`;
@@ -83,18 +79,6 @@ export function registerProfileCommands(
           description: repoRoot ? 'Inspect effective Git identity and resolution rule for this repo' : 'No repo open',
           action: 'effective-identity',
         });
-        items.push({
-          label: '$(link) Bind Current Repo to Profile...',
-          description: repoRoot ? 'Set default profile for this repository' : 'No repo open',
-          action: 'bind',
-        });
-        if (boundId) {
-          items.push({
-            label: '$(link-external) Unbind Current Repo',
-            description: 'Remove profile association for this repository',
-            action: 'unbind',
-          });
-        }
         items.push({
           label: '$(folder) Configure Folder Rules (includeIf)...',
           description: 'Set up automatic folder-based profiles (~/work/** -> Work)',
@@ -158,23 +142,34 @@ export function registerProfileCommands(
         return choice === continueBtn;
       };
 
-      const switched = await profileManager.switchProfile(selectedId, repoRoot, confirmGlobalGitChange);
-
-      vscode.window.showInformationMessage(
-        repoRoot
-          ? `Switched repository to profile "${switched.name}".`
-          : `Active profile switched to "${switched.name}".`
-      );
-      onProfileChanged?.();
+      try {
+        const switched = await profileManager.switchProfile(selectedId, repoRoot, confirmGlobalGitChange);
+        vscode.window.showInformationMessage(
+          repoRoot
+            ? `Switched repository to profile "${switched.name}".`
+            : `Active profile switched to "${switched.name}".`
+        );
+        onProfileChanged?.();
+      } catch (err: any) {
+        if (err?.message?.includes('cancelled')) {
+          logger.info(`Profile switch was cancelled: ${err.message}`);
+          return;
+        }
+        vscode.window.showErrorMessage(`Failed to switch profile: ${err?.message || String(err)}`);
+      }
     })
   );
 
   // 2. Create Profile
   context.subscriptions.push(
     vscode.commands.registerCommand('gitaxis.createProfile', async () => {
+      const allowGlobalScope = vscode.workspace.getConfiguration('gitaxis').get<boolean>('advanced.allowGlobalScope', false);
+      const totalSteps = allowGlobalScope ? 6 : 5;
+      let currentStep = 1;
+
       // Step 1: Name
       const name = await vscode.window.showInputBox({
-        title: 'Create Profile (1/6)',
+        title: `Create Profile (${currentStep++}/${totalSteps})`,
         prompt: 'Enter a profile name (e.g. work, personal, opensource)',
         validateInput: val => {
           if (!Validation.isValidProfileName(val)) {
@@ -188,22 +183,21 @@ export function registerProfileCommands(
 
       // Step 2: Git Name
       const gitName = await vscode.window.showInputBox({
-        title: 'Create Profile (2/6)',
-        prompt: 'Enter Git commit author name (e.g. John Doe)',
+        title: `Create Profile (${currentStep++}/${totalSteps})`,
+        prompt: 'Enter Git commit author name (e.g. Work User)',
         validateInput: val => (val.trim().length > 0 ? undefined : 'Git name cannot be empty'),
       });
       if (!gitName) return;
 
       // Step 3: Git Email
       const gitEmail = await vscode.window.showInputBox({
-        title: 'Create Profile (3/6)',
-        prompt: 'Enter Git commit email (e.g. john@company.com)',
+        title: `Create Profile (${currentStep++}/${totalSteps})`,
+        prompt: 'Enter Git commit email (e.g. work@company.com)',
         validateInput: val => (Validation.isValidEmail(val) ? undefined : 'Please enter a valid email address'),
       });
       if (!gitEmail) return;
 
       // Step 4: Identity Scope (Advanced option, hidden by default per Section 7)
-      const allowGlobalScope = vscode.workspace.getConfiguration('gitaxis').get<boolean>('advanced.allowGlobalScope', false);
       let scope: GitIdentityScope = 'local';
       if (allowGlobalScope) {
         const scopeSelection = await vscode.window.showQuickPick(
@@ -211,7 +205,7 @@ export function registerProfileCommands(
             { label: 'Repository (Recommended)', description: 'Applies identity locally to the opened repository', scope: 'local' as GitIdentityScope },
             { label: 'Global', description: 'Sets global Git identity (will prompt before overwriting)', scope: 'global' as GitIdentityScope },
           ],
-          { title: 'Create Profile (4/6): Identity Scope (Advanced)' }
+          { title: `Create Profile (${currentStep++}/${totalSteps}): Identity Scope (Advanced)` }
         );
         if (!scopeSelection) return;
         scope = scopeSelection.scope;
@@ -229,7 +223,7 @@ export function registerProfileCommands(
 
       // Step 5: GitHub Username & Host
       const githubUsername = await vscode.window.showInputBox({
-        title: 'Create Profile (5/6)',
+        title: `Create Profile (${currentStep++}/${totalSteps})`,
         prompt: 'Enter GitHub username (optional, press Enter to skip)',
       });
 
@@ -253,7 +247,7 @@ export function registerProfileCommands(
       ];
 
       const authSelection = await vscode.window.showQuickPick(authOptions, {
-        title: 'Create Profile (6/6): Authentication Method',
+        title: `Create Profile (${currentStep++}/${totalSteps}): Authentication Method`,
       });
       if (!authSelection) return;
 

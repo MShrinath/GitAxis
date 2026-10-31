@@ -2,9 +2,9 @@
   "name": "gitaxis",
   "displayName": "GitAxis - Git & GitHub Profile Manager",
   "description": "Multi-profile Git and GitHub control center for VS Code",
-  "version": "0.10.0",
+  "version": "0.11.0",
   "license": "MIT",
-  "publisher": "gitaxis",
+  "publisher": "mshrinath",
   "icon": "media/icon.png",
   "capabilities": {
     "untrustedWorkspaces": {
@@ -69,16 +69,6 @@
         "category": "GitAxis"
       },
       {
-        "command": "gitaxis.bindRepo",
-        "title": "Bind Current Repo to Profile",
-        "category": "GitAxis"
-      },
-      {
-        "command": "gitaxis.unbindRepo",
-        "title": "Unbind Current Repo from Profile",
-        "category": "GitAxis"
-      },
-      {
         "command": "gitaxis.showEffectiveIdentity",
         "title": "Show Effective Identity",
         "category": "GitAxis"
@@ -111,111 +101,6 @@
       {
         "command": "gitaxis.scanAccounts",
         "title": "Scan Existing Accounts",
-        "category": "GitAxis"
-      },
-      {
-        "command": "gitaxis.status",
-        "title": "Status",
-        "category": "GitAxis"
-      },
-      {
-        "command": "gitaxis.commit",
-        "title": "Commit",
-        "category": "GitAxis"
-      },
-      {
-        "command": "gitaxis.push",
-        "title": "Push",
-        "category": "GitAxis"
-      },
-      {
-        "command": "gitaxis.pull",
-        "title": "Pull",
-        "category": "GitAxis"
-      },
-      {
-        "command": "gitaxis.fetch",
-        "title": "Fetch",
-        "category": "GitAxis"
-      },
-      {
-        "command": "gitaxis.createBranch",
-        "title": "Create Branch",
-        "category": "GitAxis"
-      },
-      {
-        "command": "gitaxis.checkoutBranch",
-        "title": "Checkout Branch",
-        "category": "GitAxis"
-      },
-      {
-        "command": "gitaxis.merge",
-        "title": "Merge",
-        "category": "GitAxis"
-      },
-      {
-        "command": "gitaxis.rebase",
-        "title": "Rebase",
-        "category": "GitAxis"
-      },
-      {
-        "command": "gitaxis.stash",
-        "title": "Stash",
-        "category": "GitAxis"
-      },
-      {
-        "command": "gitaxis.tag",
-        "title": "Tag",
-        "category": "GitAxis"
-      },
-      {
-        "command": "gitaxis.reset",
-        "title": "Reset",
-        "category": "GitAxis"
-      },
-      {
-        "command": "gitaxis.manageRemote",
-        "title": "Manage Remote",
-        "category": "GitAxis"
-      },
-      {
-        "command": "gitaxis.openGitHubRepo",
-        "title": "Open GitHub Repository",
-        "category": "GitAxis"
-      },
-      {
-        "command": "gitaxis.createPullRequest",
-        "title": "Create Pull Request",
-        "category": "GitAxis"
-      },
-      {
-        "command": "gitaxis.createIssue",
-        "title": "Create Issue",
-        "category": "GitAxis"
-      },
-      {
-        "command": "gitaxis.diff",
-        "title": "Diff",
-        "category": "GitAxis"
-      },
-      {
-        "command": "gitaxis.history",
-        "title": "History",
-        "category": "GitAxis"
-      },
-      {
-        "command": "gitaxis.clone",
-        "title": "Clone Repository",
-        "category": "GitAxis"
-      },
-      {
-        "command": "gitaxis.actions",
-        "title": "View GitHub Actions",
-        "category": "GitAxis"
-      },
-      {
-        "command": "gitaxis.releases",
-        "title": "View GitHub Releases",
         "category": "GitAxis"
       }
     ],

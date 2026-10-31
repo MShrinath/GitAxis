@@ -2,7 +2,7 @@ import * as crypto from 'crypto';
 import * as vscode from 'vscode';
 import { OperationManager } from '../operations/operationManager';
 import { createOperation } from '../contracts';
-import { getWorkspaceRepoPath } from '../utils/workspace';
+import { getActiveWorkspaceRepoPath } from '../utils/workspace';
 
 export function registerSyncCommands(
   context: vscode.ExtensionContext,
@@ -12,7 +12,7 @@ export function registerSyncCommands(
   // Push
   context.subscriptions.push(
     vscode.commands.registerCommand('gitaxis.push', async () => {
-      const repoPath = getWorkspaceRepoPath();
+      const repoPath = await getActiveWorkspaceRepoPath();
       if (!repoPath) return;
 
       const pushType = await vscode.window.showQuickPick(
@@ -77,7 +77,7 @@ export function registerSyncCommands(
   // Pull
   context.subscriptions.push(
     vscode.commands.registerCommand('gitaxis.pull', async () => {
-      const repoPath = getWorkspaceRepoPath();
+      const repoPath = await getActiveWorkspaceRepoPath();
       if (!repoPath) return;
 
       const op = createOperation({
@@ -116,7 +116,7 @@ export function registerSyncCommands(
   // Fetch
   context.subscriptions.push(
     vscode.commands.registerCommand('gitaxis.fetch', async () => {
-      const repoPath = getWorkspaceRepoPath();
+      const repoPath = await getActiveWorkspaceRepoPath();
       if (!repoPath) return;
 
       const op = createOperation({

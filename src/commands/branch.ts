@@ -3,7 +3,7 @@ import * as vscode from 'vscode';
 import { OperationManager } from '../operations/operationManager';
 import { createOperation } from '../contracts';
 import { Validation } from '../utils/validation';
-import { getWorkspaceRepoPath } from '../utils/workspace';
+import { getActiveWorkspaceRepoPath } from '../utils/workspace';
 
 export function registerBranchCommands(
   context: vscode.ExtensionContext,
@@ -13,7 +13,7 @@ export function registerBranchCommands(
   // Create Branch
   context.subscriptions.push(
     vscode.commands.registerCommand('gitaxis.createBranch', async () => {
-      const repoPath = getWorkspaceRepoPath();
+      const repoPath = await getActiveWorkspaceRepoPath();
       if (!repoPath) return;
 
       const name = await vscode.window.showInputBox({
@@ -56,7 +56,7 @@ export function registerBranchCommands(
   // Checkout Branch
   context.subscriptions.push(
     vscode.commands.registerCommand('gitaxis.checkoutBranch', async () => {
-      const repoPath = getWorkspaceRepoPath();
+      const repoPath = await getActiveWorkspaceRepoPath();
       if (!repoPath) return;
 
       const ref = await vscode.window.showInputBox({
@@ -89,7 +89,7 @@ export function registerBranchCommands(
   // Merge
   context.subscriptions.push(
     vscode.commands.registerCommand('gitaxis.merge', async () => {
-      const repoPath = getWorkspaceRepoPath();
+      const repoPath = await getActiveWorkspaceRepoPath();
       if (!repoPath) return;
 
       const branch = await vscode.window.showInputBox({
@@ -122,7 +122,7 @@ export function registerBranchCommands(
   // Rebase
   context.subscriptions.push(
     vscode.commands.registerCommand('gitaxis.rebase', async () => {
-      const repoPath = getWorkspaceRepoPath();
+      const repoPath = await getActiveWorkspaceRepoPath();
       if (!repoPath) return;
 
       const onto = await vscode.window.showInputBox({

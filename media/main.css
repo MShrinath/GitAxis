@@ -165,6 +165,10 @@ body {
   color: var(--error-fg, #f48771) !important;
 }
 
+.profile-title-name.status-neutral {
+  color: var(--fg-muted, #999999) !important;
+}
+
 .btn-open-repo {
   padding: 3px 5px;
   display: inline-flex;

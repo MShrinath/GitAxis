@@ -11,8 +11,11 @@ import { logger } from '../utils/logger';
 
 const execFileAsync = promisify(execFile);
 
+export type VerificationStatusState = 'verified' | 'failed' | 'not-verified';
+
 export interface VerificationResult {
   success: boolean;
+  status?: VerificationStatusState;
   login?: string;
   message: string;
   scopes?: string[];
@@ -20,29 +23,59 @@ export interface VerificationResult {
 }
 
 export class AccountVerifier {
+  private cache = new Map<string, { result: VerificationResult; expiresAt: number }>();
+  private readonly TTL_MS = 10 * 60 * 1000; // 10 minutes
+
   constructor(
     private secretStore: SecretStore,
     private gitClient: GitClient,
     private ghCliAuth: GitHubCliAuth = new GitHubCliAuth()
   ) {}
 
-  public async verifyProfile(profile: GitProfile, repoPath?: string): Promise<VerificationResult> {
+  public clearCache(profileId?: string): void {
+    if (profileId) {
+      this.cache.delete(profileId);
+    } else {
+      this.cache.clear();
+    }
+  }
+
+  public async verifyProfile(
+    profile: GitProfile,
+    repoPath?: string,
+    options: { force?: boolean; onDemand?: boolean } = {}
+  ): Promise<VerificationResult> {
+    if (!options.force) {
+      const cached = this.cache.get(profile.id);
+      if (cached && Date.now() < cached.expiresAt) {
+        return cached.result;
+      }
+    }
+
     const authType = profile.authentication.type;
     const host = profile.github?.host || 'github.com';
     const expectedUsername = profile.github?.username;
+    let result: VerificationResult;
 
     switch (authType) {
       case 'pat':
-        return this.verifyPat(profile, host, expectedUsername);
+        result = await this.verifyPat(profile, host, expectedUsername);
+        break;
       case 'github-cli':
-        return this.verifyGitHubCli(profile, host, expectedUsername);
+        result = await this.verifyGitHubCli(profile, host, expectedUsername);
+        break;
       case 'ssh':
-        return this.verifySsh(profile, host, expectedUsername);
+        result = await this.verifySsh(profile, host, expectedUsername);
+        break;
       case 'credential-manager':
       case 'none':
       default:
-        return this.verifyHttpsOrGit(profile, host, expectedUsername, repoPath);
+        result = await this.verifyHttpsOrGit(profile, host, expectedUsername, repoPath, options.onDemand);
+        break;
     }
+
+    this.cache.set(profile.id, { result, expiresAt: Date.now() + this.TTL_MS });
+    return result;
   }
 
   private async verifyPat(
@@ -54,6 +87,7 @@ export class AccountVerifier {
     if (!token) {
       return {
         success: false,
+        status: 'failed',
         message: 'No Personal Access Token saved in SecretStorage for this profile.',
       };
     }
@@ -75,12 +109,12 @@ export class AccountVerifier {
 
       if (!res.ok) {
         if (res.status === 401) {
-          return { success: false, message: 'Invalid or expired Personal Access Token (401 Unauthorized).' };
+          return { success: false, status: 'failed', message: 'Invalid or expired Personal Access Token (401 Unauthorized).' };
         }
         if (res.status === 403) {
-          return { success: false, message: 'Access forbidden or API rate limited (403 Forbidden).' };
+          return { success: false, status: 'failed', message: 'Access forbidden or API rate limited (403 Forbidden).' };
         }
-        return { success: false, message: `GitHub API error (${res.status}): ${res.statusText}` };
+        return { success: false, status: 'failed', message: `GitHub API error (${res.status}): ${res.statusText}` };
       }
 
       const user = (await res.json()) as { login: string };
@@ -89,6 +123,7 @@ export class AccountVerifier {
       if (expectedUsername && login.toLowerCase() !== expectedUsername.toLowerCase()) {
         return {
           success: false,
+          status: 'failed',
           login,
           message: `Token authenticates as @${login}, but profile expects @${expectedUsername}.`,
           scopes,
@@ -98,6 +133,7 @@ export class AccountVerifier {
 
       return {
         success: true,
+        status: 'verified',
         login,
         message: `Authenticated as @${login}`,
         scopes,
@@ -106,6 +142,7 @@ export class AccountVerifier {
     } catch (err) {
       return {
         success: false,
+        status: 'failed',
         message: `Network error verifying PAT: ${String(err)}`,
       };
     }
@@ -120,6 +157,7 @@ export class AccountVerifier {
     if (!token) {
       return {
         success: false,
+        status: 'failed',
         message: expectedUsername
           ? `User "${expectedUsername}" is not logged in to GitHub CLI.`
           : 'GitHub CLI is not logged in or token is unavailable.',
@@ -137,7 +175,7 @@ export class AccountVerifier {
       });
 
       if (!res.ok) {
-        return { success: false, message: `GitHub CLI token returned error (${res.status}).` };
+        return { success: false, status: 'failed', message: `GitHub CLI token returned error (${res.status}).` };
       }
 
       const user = (await res.json()) as { login: string };
@@ -146,6 +184,7 @@ export class AccountVerifier {
       if (expectedUsername && login.toLowerCase() !== expectedUsername.toLowerCase()) {
         return {
           success: false,
+          status: 'failed',
           login,
           message: `gh CLI authenticated as @${login}, but profile expects @${expectedUsername}.`,
         };
@@ -153,12 +192,14 @@ export class AccountVerifier {
 
       return {
         success: true,
+        status: 'verified',
         login,
         message: `Authenticated as @${login} via GitHub CLI`,
       };
     } catch (err) {
       return {
         success: false,
+        status: 'failed',
         message: `Failed to verify gh CLI token: ${String(err)}`,
       };
     }
@@ -173,6 +214,7 @@ export class AccountVerifier {
     if (!rawSshKeyPath) {
       return {
         success: false,
+        status: 'failed',
         message: 'No SSH key path configured for this profile.',
       };
     }
@@ -209,6 +251,7 @@ export class AccountVerifier {
       }
       return {
         success: false,
+        status: 'failed',
         message: `SSH test failed: ${e.stderr || e.message || String(err)}`,
       };
     }
@@ -221,12 +264,14 @@ export class AccountVerifier {
       if (expectedUsername && login.toLowerCase() !== expectedUsername.toLowerCase()) {
         return {
           success: false,
+          status: 'failed',
           login,
           message: `SSH key authenticated as @${login}, expected @${expectedUsername}.`,
         };
       }
       return {
         success: true,
+        status: 'verified',
         login,
         message: `Authenticated as @${login} via SSH`,
       };
@@ -235,52 +280,72 @@ export class AccountVerifier {
     if (output.includes('Permission denied (publickey)')) {
       return {
         success: false,
+        status: 'failed',
         message: 'Permission denied (publickey). Key is not recognized by GitHub.',
       };
     }
 
     return {
       success: false,
+      status: 'failed',
       message: `SSH response: ${output.trim().split('\n')[0] || 'Unknown response'}`,
     };
   }
 
   private async verifyHttpsOrGit(
     profile: GitProfile,
-    _host: string,
+    host: string,
     expectedUsername?: string,
-    repoPath?: string
+    repoPath?: string,
+    onDemand: boolean = false
   ): Promise<VerificationResult> {
-    if (repoPath) {
+    if (!onDemand) {
+      return {
+        success: true,
+        status: 'not-verified',
+        login: expectedUsername,
+        message: 'Configured, not verified',
+      };
+    }
+
+    if (expectedUsername) {
       try {
-        const remotes = await this.gitClient.getRemotes(repoPath);
-        const origin = remotes.find(r => r.name === 'origin') || remotes[0];
-        if (origin && origin.fetchUrl) {
-          await this.gitClient.exec(['ls-remote', '--heads', origin.name], {
-            cwd: repoPath,
-            timeout: 10000,
+        const { stdout } = await this.gitClient.execWithStdin(
+          ['credential', 'fill'],
+          `protocol=https\nhost=${host}\nusername=${expectedUsername}\n\n`,
+          { cwd: repoPath, timeout: 5000 }
+        );
+        const passMatch = stdout.match(/^password=(.+)$/m);
+        const token = passMatch ? passMatch[1].trim() : undefined;
+        if (token) {
+          const apiUrl = host === 'github.com' ? 'https://api.github.com/user' : `https://${host}/api/v3/user`;
+          const res = await fetch(apiUrl, {
+            headers: {
+              Authorization: `token ${token}`,
+              'User-Agent': 'GitAxis-VSCode-Extension',
+              Accept: 'application/vnd.github.v3+json',
+            },
           });
-          return {
-            success: true,
-            login: expectedUsername,
-            message: `Git remote authenticated successfully for ${origin.name} (${origin.fetchUrl})`,
-          };
+          if (res.ok) {
+            const user = (await res.json()) as { login: string };
+            if (user.login.toLowerCase() === expectedUsername.toLowerCase()) {
+              return {
+                success: true,
+                status: 'verified',
+                login: user.login,
+                message: `Verified @${user.login} via credential helper`,
+              };
+            }
+          }
         }
-      } catch (err) {
-        return {
-          success: false,
-          login: expectedUsername,
-          message: `Git remote authentication failed: ${String(err)}`,
-        };
-      }
+      } catch {}
     }
 
     return {
       success: true,
+      status: 'not-verified',
       login: expectedUsername,
-      message: expectedUsername
-        ? `Configured as @${expectedUsername} (GCM / Local Git identity)`
-        : 'Local Git identity configured',
+      message: 'Configured, not verified',
     };
   }
 }

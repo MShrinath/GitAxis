@@ -397,17 +397,37 @@
       for (const [profId, stat] of Object.entries(statuses)) {
         const el = document.getElementById('profile-name-' + profId);
         if (el) {
-          el.classList.remove('status-verified', 'status-unverified');
-          el.classList.add(stat.verified ? 'status-verified' : 'status-unverified');
-          el.title = (stat.verified ? 'Verified: ' : 'Verification warning: ') + (stat.message || '');
+          el.classList.remove('status-verified', 'status-unverified', 'status-neutral');
+          const isVerified = stat.status === 'verified' || (!stat.status && stat.verified);
+          const isNeutral = stat.status === 'not-verified';
+          if (isVerified) {
+            el.classList.add('status-verified');
+            el.title = 'Verified: ' + (stat.message || '');
+          } else if (isNeutral) {
+            el.classList.add('status-neutral');
+            el.title = stat.message || 'Configured, not verified';
+          } else {
+            el.classList.add('status-unverified');
+            el.title = 'Verification warning: ' + (stat.message || '');
+          }
         }
       }
       const activeTitle = document.querySelector('.card-active-identity .profile-title-name');
       if (activeTitle && msg.activeProfileId && statuses[msg.activeProfileId]) {
         const stat = statuses[msg.activeProfileId];
-        activeTitle.classList.remove('status-verified', 'status-unverified');
-        activeTitle.classList.add(stat.verified ? 'status-verified' : 'status-unverified');
-        activeTitle.title = (stat.verified ? 'Verified: ' : 'Verification warning: ') + (stat.message || '');
+        activeTitle.classList.remove('status-verified', 'status-unverified', 'status-neutral');
+        const isVerified = stat.status === 'verified' || (!stat.status && stat.verified);
+        const isNeutral = stat.status === 'not-verified';
+        if (isVerified) {
+          activeTitle.classList.add('status-verified');
+          activeTitle.title = 'Verified: ' + (stat.message || '');
+        } else if (isNeutral) {
+          activeTitle.classList.add('status-neutral');
+          activeTitle.title = stat.message || 'Configured, not verified';
+        } else {
+          activeTitle.classList.add('status-unverified');
+          activeTitle.title = 'Verification warning: ' + (stat.message || '');
+        }
       }
     } else if (msg.command === 'verificationResult') {
       const resBox = document.getElementById('verify-result-' + msg.profileId);

@@ -5,7 +5,7 @@ import { GitClient } from '../git/gitClient';
 import { createOperation } from '../contracts';
 import { Validation } from '../utils/validation';
 import { TagInfo } from '../git/tag';
-import { getWorkspaceRepoPath } from '../utils/workspace';
+import { getActiveWorkspaceRepoPath } from '../utils/workspace';
 
 export function registerTagCommands(
   context: vscode.ExtensionContext,
@@ -15,7 +15,7 @@ export function registerTagCommands(
 ): void {
   context.subscriptions.push(
     vscode.commands.registerCommand('gitaxis.tag', async () => {
-      const repoPath = getWorkspaceRepoPath();
+      const repoPath = await getActiveWorkspaceRepoPath(gitClient);
       if (!repoPath) {
         vscode.window.showErrorMessage('No workspace folder open.');
         return;
