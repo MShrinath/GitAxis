@@ -36,18 +36,36 @@
     }
   }
 
+  function showProfileForm() {
+    const formEl = document.getElementById('profile-form-section');
+    if (formEl) {
+      formEl.classList.remove('hidden');
+      formEl.style.display = 'block';
+    }
+  }
+
+  function hideProfileForm() {
+    const formEl = document.getElementById('profile-form-section');
+    if (formEl) {
+      formEl.classList.add('hidden');
+      formEl.style.display = 'none';
+    }
+  }
+
   function saveCurrentFormToState() {
     try {
       const currentState = vscode.getState() || {};
       const scopeEl = document.querySelector('input[name="form-scope"]:checked');
+      const formEl = document.getElementById('profile-form-section');
+      const isVisible = formEl && !formEl.classList.contains('hidden') && formEl.style.display !== 'none';
       const formState = {
+        visible: isVisible,
         id: document.getElementById('form-profile-id')?.value || '',
         name: document.getElementById('form-name')?.value || '',
         gitName: document.getElementById('form-git-name')?.value || '',
         gitEmail: document.getElementById('form-git-email')?.value || '',
         githubUsername: document.getElementById('form-gh-user')?.value || '',
         host: document.getElementById('form-host')?.value || 'github.com',
-        orgs: document.getElementById('form-orgs')?.value || '',
         pat: document.getElementById('form-pat')?.value || '',
         scope: scopeEl ? scopeEl.value : 'local',
         title: document.getElementById('form-title')?.innerText || 'CREATE / EDIT PROFILE',
@@ -64,14 +82,14 @@
       const state = vscode.getState();
       if (!state || !state.form) return;
       const f = state.form;
-      if (f.name || f.gitName || f.gitEmail || f.githubUsername || f.pat || f.id) {
+      if (f.visible && (f.name || f.gitName || f.gitEmail || f.githubUsername || f.pat || f.id)) {
+        showProfileForm();
         if (document.getElementById('form-profile-id')) document.getElementById('form-profile-id').value = f.id || '';
         if (document.getElementById('form-name')) document.getElementById('form-name').value = f.name || '';
         if (document.getElementById('form-git-name')) document.getElementById('form-git-name').value = f.gitName || '';
         if (document.getElementById('form-git-email')) document.getElementById('form-git-email').value = f.gitEmail || '';
         if (document.getElementById('form-gh-user')) document.getElementById('form-gh-user').value = f.githubUsername || '';
         if (document.getElementById('form-host')) document.getElementById('form-host').value = f.host || 'github.com';
-        if (document.getElementById('form-orgs')) document.getElementById('form-orgs').value = f.orgs || '';
         if (document.getElementById('form-pat')) document.getElementById('form-pat').value = f.pat || '';
         if (f.scope) {
           const radio = document.querySelector('input[name="form-scope"][value="' + f.scope + '"]');
@@ -97,7 +115,6 @@
     const gitEmail = (document.getElementById('form-git-email')?.value || '').trim();
     const githubUsername = (document.getElementById('form-gh-user')?.value || '').trim();
     const host = (document.getElementById('form-host')?.value || '').trim() || 'github.com';
-    const orgs = (document.getElementById('form-orgs')?.value || '').trim();
     const pat = (document.getElementById('form-pat')?.value || '').trim();
     const scopeEl = document.querySelector('input[name="form-scope"]:checked');
     const scope = scopeEl ? scopeEl.value : 'local';
@@ -126,25 +143,25 @@
     if (id) {
       vscode.postMessage({
         command: 'updateProfileFromForm',
-        data: { id, name, gitName, gitEmail, githubUsername, host, orgs, pat, scope },
+        data: { id, name, gitName, gitEmail, githubUsername, host, pat, scope },
       });
     } else {
       vscode.postMessage({
         command: 'createProfileFromForm',
-        data: { name, gitName, gitEmail, githubUsername, host, orgs, pat, scope },
+        data: { name, gitName, gitEmail, githubUsername, host, pat, scope },
       });
     }
   }
 
   function cancelProfileForm() {
     hideFormError();
+    hideProfileForm();
     if (document.getElementById('form-profile-id')) document.getElementById('form-profile-id').value = '';
     if (document.getElementById('form-name')) document.getElementById('form-name').value = '';
     if (document.getElementById('form-git-name')) document.getElementById('form-git-name').value = '';
     if (document.getElementById('form-git-email')) document.getElementById('form-git-email').value = '';
     if (document.getElementById('form-gh-user')) document.getElementById('form-gh-user').value = '';
     if (document.getElementById('form-host')) document.getElementById('form-host').value = 'github.com';
-    if (document.getElementById('form-orgs')) document.getElementById('form-orgs').value = '';
     if (document.getElementById('form-pat')) {
       const patInput = document.getElementById('form-pat');
       patInput.value = '';
@@ -168,13 +185,13 @@
     const p = profiles.find(item => item.id === id);
     if (!p) return;
 
+    showProfileForm();
     if (document.getElementById('form-profile-id')) document.getElementById('form-profile-id').value = p.id;
     if (document.getElementById('form-name')) document.getElementById('form-name').value = p.name;
     if (document.getElementById('form-git-name')) document.getElementById('form-git-name').value = p.git.name;
     if (document.getElementById('form-git-email')) document.getElementById('form-git-email').value = p.git.email;
     if (document.getElementById('form-gh-user')) document.getElementById('form-gh-user').value = p.github?.username || '';
     if (document.getElementById('form-host')) document.getElementById('form-host').value = p.github?.host || 'github.com';
-    if (document.getElementById('form-orgs')) document.getElementById('form-orgs').value = (p.github?.orgs || []).join(', ');
     if (document.getElementById('form-pat')) {
       const patInput = document.getElementById('form-pat');
       patInput.value = '';
@@ -205,6 +222,7 @@
     const acc = discovered[index];
     if (!acc) return;
 
+    showProfileForm();
     if (document.getElementById('form-profile-id')) document.getElementById('form-profile-id').value = '';
     if (document.getElementById('form-name')) document.getElementById('form-name').value = acc.name || '';
     if (document.getElementById('form-git-name')) document.getElementById('form-git-name').value = acc.git?.name || '';
@@ -232,6 +250,7 @@
 
   function startNewProfile() {
     cancelProfileForm();
+    showProfileForm();
     const formEl = document.getElementById('profile-form-section');
     if (formEl) formEl.scrollIntoView({ behavior: 'smooth' });
     const nameInput = document.getElementById('form-name');
@@ -345,7 +364,7 @@
   });
 
   // Attach input listeners for persistent caching
-  ['form-name', 'form-git-name', 'form-git-email', 'form-gh-user', 'form-host', 'form-orgs', 'form-pat'].forEach(function (id) {
+  ['form-name', 'form-git-name', 'form-git-email', 'form-gh-user', 'form-host', 'form-pat'].forEach(function (id) {
     const el = document.getElementById(id);
     if (el) {
       el.addEventListener('input', saveCurrentFormToState);
@@ -370,6 +389,23 @@
         submitBtn.innerText = id ? 'Update Profile' : 'Save Profile';
       }
       showFormError(msg.error || 'Failed to save profile.');
+    } else if (msg.command === 'verificationStatuses') {
+      const statuses = msg.statuses || {};
+      for (const [profId, stat] of Object.entries(statuses)) {
+        const el = document.getElementById('profile-name-' + profId);
+        if (el) {
+          el.classList.remove('status-verified', 'status-unverified');
+          el.classList.add(stat.verified ? 'status-verified' : 'status-unverified');
+          el.title = (stat.verified ? 'Verified: ' : 'Verification warning: ') + (stat.message || '');
+        }
+      }
+      const activeTitle = document.querySelector('.card-active-identity .profile-title-name');
+      if (activeTitle && msg.activeProfileId && statuses[msg.activeProfileId]) {
+        const stat = statuses[msg.activeProfileId];
+        activeTitle.classList.remove('status-verified', 'status-unverified');
+        activeTitle.classList.add(stat.verified ? 'status-verified' : 'status-unverified');
+        activeTitle.title = (stat.verified ? 'Verified: ' : 'Verification warning: ') + (stat.message || '');
+      }
     } else if (msg.command === 'verificationResult') {
       const resBox = document.getElementById('verify-result-' + msg.profileId);
       if (resBox && msg.result) {

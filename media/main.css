@@ -136,6 +136,25 @@ body {
   color: var(--fg);
 }
 
+.profile-title-name {
+  transition: color 0.2s ease;
+}
+
+.profile-title-name.status-verified {
+  color: var(--badge-success-fg, #4ec9b0) !important;
+}
+
+.profile-title-name.status-unverified {
+  color: var(--error-fg, #f48771) !important;
+}
+
+.btn-open-repo {
+  padding: 3px 5px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .status-dot {
   width: 7px;
   height: 7px;

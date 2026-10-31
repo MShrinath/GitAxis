@@ -44,9 +44,9 @@ describe('Webview HTML Builder (V2 Profile Control Center)', () => {
     remotes: [
       {
         name: 'origin',
-        fetchUrl: 'https://github.com/MShrinath/GitAxis.git',
-        pushUrl: 'https://github.com/MShrinath/GitAxis.git',
-        owner: 'MShrinath',
+        fetchUrl: 'https://github.com/example-org/GitAxis.git',
+        pushUrl: 'https://github.com/example-org/GitAxis.git',
+        owner: 'example-org',
         repository: 'GitAxis',
         host: 'github.com',
       },
@@ -58,7 +58,7 @@ describe('Webview HTML Builder (V2 Profile Control Center)', () => {
       profile: dummyProfile,
       repository: dummyRepo,
       profiles: [dummyProfile],
-      repoUrl: 'https://github.com/MShrinath/GitAxis',
+      repoUrl: 'https://github.com/example-org/GitAxis',
       linkedProfileId: 'prof_1',
     };
 
@@ -69,17 +69,24 @@ describe('Webview HTML Builder (V2 Profile Control Center)', () => {
     assert.ok(html.includes('Work'));
     assert.ok(html.includes('john@company.com'));
     assert.ok(html.includes('@john-work'));
+    // Bound to repo badge should NOT be present
+    assert.strictEqual(html.includes('Bound to repo'), false);
+    // (github.com) should NOT be displayed next to username
+    assert.strictEqual(html.includes('(github.com)'), false);
 
-    // Repo status & GitHub link
+    // Repo status & GitHub link icon
     assert.ok(html.includes('CURRENT REPO:'));
     assert.ok(html.includes('GitAxis'));
     assert.ok(html.includes('Branch:'));
     assert.ok(html.includes('main'));
     assert.ok(html.includes('Open on GitHub'));
-    assert.ok(html.includes('https://github.com/MShrinath/GitAxis'));
+    assert.ok(html.includes('btn-open-repo'));
+    assert.ok(html.includes('https://github.com/example-org/GitAxis'));
 
-    // Persistent form
+    // Profile form: hidden by default, no Allowed Orgs input
     assert.ok(html.includes('CREATE / EDIT PROFILE'));
+    assert.ok(html.includes('id="profile-form-section"') && html.includes('hidden') && html.includes('display: none;'));
+    assert.strictEqual(html.includes('Allowed Orgs'), false);
     assert.ok(html.includes('id="form-name"'));
     assert.ok(html.includes('id="form-git-name"'));
     assert.ok(html.includes('id="form-git-email"'));
@@ -151,8 +158,8 @@ describe('Webview HTML Builder (V2 Profile Control Center)', () => {
       ...dummyProfile,
       id: 'prof_2',
       name: 'Personal',
-      git: { name: 'Shrinath', email: 'shrinath@personal.me', scope: 'local' },
-      github: { host: 'github.com', username: 'MShrinath' },
+      git: { name: 'Personal User', email: 'personal@example.com', scope: 'local' },
+      github: { host: 'github.com', username: 'personal-user' },
     };
 
     const state: WebviewState = {
@@ -173,10 +180,43 @@ describe('Webview HTML Builder (V2 Profile Control Center)', () => {
     assert.ok(html.includes('data-action="editProfile"') && html.includes('data-profile-id="prof_2"'));
     assert.ok(html.includes('data-action="deleteProfile"') && html.includes('data-profile-id="prof_2"'));
 
-    // Ensure link repo is completely removed from UI
+    // Ensure link repo and manual verify button are completely removed from UI
     assert.strictEqual(html.includes('linkRepo('), false);
     assert.strictEqual(html.includes('unlinkRepo('), false);
     assert.strictEqual(html.includes('Linked to:'), false);
+    assert.strictEqual(html.includes('data-action="verifyProfile"'), false);
+  });
+
+  it('should apply verification status color classes and display enterprise host if not github.com', () => {
+    const enterpriseProfile: GitProfile = {
+      id: 'prof_ent',
+      name: 'Enterprise Profile',
+      git: { name: 'Ent User', email: 'user@enterprise.org', scope: 'local' },
+      github: { host: 'github.mycorp.internal', username: 'corp-user' },
+      authentication: { type: 'none' },
+      metadata: { source: 'manual', imported: false },
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    const state: WebviewState = {
+      profile: dummyProfile,
+      profiles: [dummyProfile, enterpriseProfile],
+      profileStatuses: {
+        prof_1: { verified: true, message: 'Token valid' },
+        prof_ent: { verified: false, message: 'Invalid token' },
+      },
+    };
+
+    const html = HtmlBuilder.render(state);
+
+    // prof_1 is verified -> status-verified class
+    assert.ok(html.includes('id="profile-name-prof_1" class="profile-title-name status-verified"'));
+    // prof_ent is unverified -> status-unverified class
+    assert.ok(html.includes('id="profile-name-prof_ent" class="profile-title-name status-unverified"'));
+
+    // enterprise host should be displayed
+    assert.ok(html.includes('(github.mycorp.internal)'));
   });
 
   it('should handle empty profiles and no opened repository gracefully', () => {

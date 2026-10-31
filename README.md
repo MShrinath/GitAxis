@@ -2,7 +2,7 @@
 
 [![GitHub Release](https://img.shields.io/github/v/release/MShrinath/GitAxis?logo=github&color=blue)](https://github.com/MShrinath/GitAxis/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
-[![Build & Tests](https://img.shields.io/badge/tests-97%20passing-brightgreen.svg)](https://github.com/MShrinath/GitAxis)
+[![Build & Tests](https://img.shields.io/badge/tests-98%20passing-brightgreen.svg)](https://github.com/MShrinath/GitAxis)
 [![VS Code](https://img.shields.io/badge/VS%20Code-1.85%2B-007acc.svg?logo=visualstudiocode)](https://code.visualstudio.com/)
 
 **GitAxis** is a dedicated identity and profile manager for Visual Studio Code and VS Code Insiders. 
@@ -45,7 +45,7 @@ When working across multiple GitHub accounts on the same computer:
   - **Commit Guard**: Verifies that the repo's configured `user.email` and `user.name` match the active profile before you commit. Offers 1-click **Fix and continue**, **Commit anyway**, or **Cancel**.
   - **Push Guard**: Verifies the remote repository owner against the profile's allowed organizations/usernames (`orgs` list or wildcards) before pushing.
   - **Configurable Safety**: Choose between `block`, `warn` (default), or `off` via `gitaxis.guard.mode`. Fails closed safely if checks encounter unexpected conditions.
-- **Inline Account Verification**: 1-click **Verify** button per profile in the sidebar. Tests PAT permissions & expiration via GitHub API, GitHub CLI credentials (`gh auth token --user <username>`), or SSH handshake (`ssh -T git@github.com -o IdentitiesOnly=yes`).
+- **Automatic Account Verification**: Profiles are automatically verified in the background on startup and refresh. Profile names dynamically highlight in green (valid credentials) or red (verification warning) with hover tooltips detailing token status, scopes, or expiration.
 - **SSH Key Isolation**: Always injects `-o IdentitiesOnly=yes` into `core.sshCommand` (`ssh -i "<key>" -o IdentitiesOnly=yes`) to ensure `ssh-agent` offers only the explicitly assigned key.
 - **Dynamic Status Bar & Mismatch Warning**: Status bar dynamically tracks the active editor's repository (`$(github) work-user`). If the local git config email differs from the bound profile, GitAxis flags a warning icon (`$(warning)`) with a helpful tooltip.
 - **Protected Global Scope**: Global Git identity writes are hidden behind an advanced setting (`gitaxis.advanced.allowGlobalScope`) to prevent accidental machine-wide config overwrites.
@@ -55,7 +55,7 @@ When working across multiple GitHub accounts on the same computer:
   - Rewrites repository HTTPS remotes to embed the active username (`https://username@github.com/owner/repo.git`), ensuring Git Credential Manager never defaults to the wrong cached user.
 - **Direct In-Memory PAT Injection**: Personal Access Tokens (PATs) are stored safely in VS Code's encrypted SecretStorage (never written as plaintext to disk). Operations run by GitAxis inject temporary scoped extraheaders (`http.https://<host>/.extraheader`) strictly in-memory per command.
 - **Native Push Credential Alignment**: For native VS Code Source Control pushes, GitAxis aligns `credential.https://${host}.username` and rewrites remote HTTPS URLs (`https://<user>@github.com/...`) so the OS Credential Manager automatically targets the matching profile identity.
-- **Persistent In-Sidebar Form**: Create and edit profiles directly in the webview sidebar. Form inputs are preserved even if you alt-tab to your browser to generate or copy credentials.
+- **On-Demand In-Sidebar Form**: Create and edit profiles directly in the webview sidebar. The form stays cleanly collapsed until clicking **+ Add Profile** or **Edit**, preserving form inputs across tabs or browser switches.
 - **1-Click Local Account Discovery**: Inspects existing `git config` and GitHub CLI (`gh auth status`) logins, displaying 1-click **[+ Import as Profile]** chips.
 - **Native VS Code Design (No Emojis)**: Pixel-aligned SVG icons, theme-adaptive CSS variables, and clean layout built strictly to match VS Code's design system.
 - **Seamless Coexistence with Native SCM**: GitAxis does not bloat your sidebar with duplicate commit/push buttons; VS Code's built-in Source Control remains the primary, native Git tool.
@@ -95,7 +95,7 @@ When working across multiple GitHub accounts on the same computer:
 ### Method 1: Install from GitHub Releases (Recommended)
 
 1. Go to the [GitAxis GitHub Releases Page](https://github.com/MShrinath/GitAxis/releases).
-2. Download the latest `.vsix` package (e.g. `gitaxis-0.8.0.vsix`).
+2. Download the latest `.vsix` package (e.g. `gitaxis-0.9.0.vsix`).
 3. Open **VS Code** or **VS Code Insiders**.
 4. Open the Extensions view (`Ctrl+Shift+X` or `Cmd+Shift+X`).
 5. Click the **`···`** (Views and More Actions) menu in the top right of the Extensions panel.
@@ -109,10 +109,10 @@ If you have VS Code in your system `PATH`:
 
 ```powershell
 # For standard VS Code:
-code --install-extension gitaxis-0.8.0.vsix
+code --install-extension gitaxis-0.9.0.vsix
 
 # For VS Code Insiders:
-code-insiders --install-extension gitaxis-0.8.0.vsix
+code-insiders --install-extension gitaxis-0.9.0.vsix
 ```
 
 ---
@@ -162,7 +162,6 @@ Click the **GitAxis** icon in the left Activity Bar to open the Control Center s
   - **Profile Name**: e.g. `work`, `personal`, `opensource`.
   - **Git Author Name & Email**: Used for commit logs.
   - **GitHub Username**: Used for remote push authentication.
-  - **Allowed Orgs**: (Optional) Comma-separated list of GitHub orgs or owner patterns (e.g. `my-corp, client-*`).
   - **PAT Token** *(Optional)*: If provided, stored securely in VS Code's encrypted `SecretStorage` and injected into the repo for instant push authentication.
 
 ### 3. Switch Profile or Bind to Repo
@@ -196,7 +195,7 @@ When using VS Code Remote (SSH, WSL, Dev Containers, or GitHub Codespaces), GitA
 ## Development & Testing
 
 ```bash
-# Run automated tests (97 unit tests)
+# Run automated tests (98 unit tests)
 npm test
 
 # Check TypeScript types

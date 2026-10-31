@@ -4,7 +4,7 @@ import { DiscoveredAccount, HtmlBuilder, WebviewState } from './html';
 import { ProfileManager } from '../profiles/profileManager';
 import { RepositoryDiscovery } from '../discovery/repositoryDiscovery';
 import { SystemDiscovery } from '../discovery/systemDiscovery';
-import { CreateProfileInput, GitRepository, ProfileMatchResult, UpdateProfileInput } from '../contracts';
+import { CreateProfileInput, GitProfile, GitRepository, ProfileMatchResult, UpdateProfileInput } from '../contracts';
 import { Platform } from '../utils/platform';
 import { Validation } from '../utils/validation';
 import { logger } from '../utils/logger';
@@ -34,6 +34,7 @@ export class SidebarViewProvider implements vscode.WebviewViewProvider {
   private view?: vscode.WebviewView;
   private discoveredAccounts: DiscoveredAccount[] = [];
   private scanPerformed: boolean = false;
+  private profileStatuses: Record<string, { verified: boolean; message?: string }> = {};
 
   constructor(
     private readonly extensionUri: vscode.Uri,
@@ -152,7 +153,6 @@ export class SidebarViewProvider implements vscode.WebviewViewProvider {
                 ? {
                     host: typeof data.host === 'string' && data.host.trim() ? data.host.trim() : 'github.com',
                     username: data.githubUsername.trim(),
-                    orgs: typeof data.orgs === 'string' ? data.orgs.split(',').map((s: string) => s.trim()).filter(Boolean) : undefined,
                   }
                 : undefined,
               authentication: {
@@ -232,12 +232,12 @@ export class SidebarViewProvider implements vscode.WebviewViewProvider {
                 ? {
                     host: typeof data.host === 'string' && data.host.trim() ? data.host.trim() : 'github.com',
                     username: data.githubUsername.trim(),
-                    orgs: typeof data.orgs === 'string' ? data.orgs.split(',').map((s: string) => s.trim()).filter(Boolean) : undefined,
+                    orgs: existingProfile.github?.orgs,
                   }
                 : {
                     username: '',
                     host: typeof data.host === 'string' && data.host.trim() ? data.host.trim() : 'github.com',
-                    orgs: typeof data.orgs === 'string' ? data.orgs.split(',').map((s: string) => s.trim()).filter(Boolean) : undefined,
+                    orgs: existingProfile.github?.orgs,
                   },
             };
 
@@ -287,6 +287,7 @@ export class SidebarViewProvider implements vscode.WebviewViewProvider {
             );
             if (confirm === 'Delete') {
               await this.profileManager.deleteProfile(message.profileId);
+              delete this.profileStatuses[message.profileId];
               this.view?.webview.postMessage({ command: 'profileDeleted', profileId: message.profileId });
               vscode.window.showInformationMessage(`Profile "${profileName}" deleted.`);
               this.onProfileChanged?.();
@@ -565,8 +566,49 @@ export class SidebarViewProvider implements vscode.WebviewViewProvider {
       styleUri: styleUri.toString(),
       nonce,
     });
+
+    if (this.accountVerifier && state.profiles.length > 0) {
+      this.verifyAllProfilesInBackground(state.profiles, state.repository?.path).catch(err =>
+        logger.debug(`Background verification error: ${String(err)}`)
+      );
+    }
   }
 
+  private async verifyAllProfilesInBackground(profiles: GitProfile[], repoPath?: string): Promise<void> {
+    if (!this.accountVerifier || profiles.length === 0) return;
+    let changed = false;
+    for (const p of profiles) {
+      try {
+        const res = await this.accountVerifier.verifyProfile(p, repoPath);
+        const prev = this.profileStatuses[p.id];
+        if (!prev || prev.verified !== res.success || prev.message !== res.message) {
+          this.profileStatuses[p.id] = {
+            verified: res.success,
+            message: res.message,
+          };
+          changed = true;
+        }
+      } catch (err) {
+        const errMsg = err instanceof Error ? err.message : String(err);
+        const prev = this.profileStatuses[p.id];
+        if (!prev || prev.verified !== false || prev.message !== errMsg) {
+          this.profileStatuses[p.id] = {
+            verified: false,
+            message: errMsg,
+          };
+          changed = true;
+        }
+      }
+    }
+    if (changed && this.view) {
+      const active = await this.profileManager.getActiveProfile();
+      this.view.webview.postMessage({
+        command: 'verificationStatuses',
+        statuses: this.profileStatuses,
+        activeProfileId: active?.id,
+      });
+    }
+  }
 
   private async getCurrentState(): Promise<WebviewState> {
     const profiles = await this.profileManager.getProfiles();
@@ -612,6 +654,7 @@ export class SidebarViewProvider implements vscode.WebviewViewProvider {
       linkedProfileId,
       discoveredAccounts: this.discoveredAccounts,
       scanPerformed: this.scanPerformed,
+      profileStatuses: this.profileStatuses,
     };
   }
 }

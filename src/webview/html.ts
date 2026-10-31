@@ -24,6 +24,7 @@ export interface WebviewState {
   repository?: GitRepository;
   matchResult?: ProfileMatchResult;
   profiles: GitProfile[];
+  profileStatuses?: Record<string, { verified: boolean; message?: string }>;
   repoUrl?: string;
   linkedProfileId?: string;
   discoveredAccounts?: DiscoveredAccount[];
@@ -157,11 +158,10 @@ export class HtmlBuilder {
       <div class="card-header-row">
         <div class="card-title-group">
           <span class="status-dot ${profile ? 'dot-active' : 'dot-inactive'}"></span>
-          <span>${repo && profile ? `Active for this repo: <strong>${profileName}</strong> (${profileUser})` : profileName}</span>
+          <span>${repo && profile ? `Active for this repo: <strong class="profile-title-name ${profile && state.profileStatuses?.[profile.id]?.verified === true ? 'status-verified' : profile && state.profileStatuses?.[profile.id]?.verified === false ? 'status-unverified' : ''}">${profileName}</strong> (${profileUser})` : `<span class="profile-title-name ${profile && state.profileStatuses?.[profile.id]?.verified === true ? 'status-verified' : profile && state.profileStatuses?.[profile.id]?.verified === false ? 'status-unverified' : ''}">${profileName}</span>`}</span>
         </div>
         <div>
           ${profile ? `<span class="badge ${isWork ? 'badge-info' : 'badge-success'}">${isWork ? 'Work' : isPersonal ? 'Personal' : 'Active'}</span>` : ''}
-          ${state.linkedProfileId && profile && state.linkedProfileId === profile.id ? `<span class="badge badge-info">Bound to repo</span>` : ''}
         </div>
       </div>
       <div class="meta-list">
@@ -171,7 +171,7 @@ export class HtmlBuilder {
         </div>
         <div class="meta-item">
           ${Icons.github}
-          <span>GitHub: <strong>${profileUser}</strong> ${hasGithub ? `<span class="sub">(${escapeHtml(profileHost)})</span>` : ''}</span>
+          <span>GitHub: <strong>${profileUser}</strong>${hasGithub && profileHost !== 'github.com' ? ` <span class="sub">(${escapeHtml(profileHost)})</span>` : ''}</span>
         </div>
       </div>
     </div>
@@ -185,8 +185,7 @@ export class HtmlBuilder {
         </div>
         ${
           repoUrl
-            ? `<button type="button" class="btn-link-action" title="Open repository on GitHub" data-action="openRepo" data-url="${escapeHtml(repoUrl)}">
-                <span>Open on GitHub</span>
+            ? `<button type="button" class="icon-btn-ghost btn-open-repo" title="Open on GitHub" aria-label="Open on GitHub" data-action="openRepo" data-url="${escapeHtml(repoUrl)}">
                 ${Icons.externalLink}
               </button>`
             : ''
@@ -259,12 +258,15 @@ export class HtmlBuilder {
             .map(p => {
               const isActive = profile?.id === p.id;
               const authText = p.authentication.type === 'pat' ? 'PAT (token saved)' : p.authentication.type;
+              const pStatus = state.profileStatuses ? state.profileStatuses[p.id] : undefined;
+              const pStatusClass = pStatus ? (pStatus.verified ? 'status-verified' : 'status-unverified') : '';
+              const pStatusTitle = pStatus ? (pStatus.verified ? `Verified: ${pStatus.message || 'Valid'}` : `Verification warning: ${pStatus.message || 'Check credentials'}`) : 'Verifying credentials...';
               return `
       <div class="card ${isActive ? 'card-active-identity' : ''}">
         <div class="card-header-row">
           <div class="card-title-group">
             <span class="status-dot ${isActive ? 'dot-active' : 'dot-inactive'}"></span>
-            <span>${escapeHtml(p.name)}</span>
+            <span id="profile-name-${escapeHtml(p.id)}" class="profile-title-name ${pStatusClass}" title="${escapeHtml(pStatusTitle)}">${escapeHtml(p.name)}</span>
           </div>
           <div>
             ${isActive ? `<span class="badge badge-success">Active</span>` : ''}
@@ -277,17 +279,15 @@ export class HtmlBuilder {
           </div>
           <div class="meta-item">
             ${Icons.github}
-            <span>GitHub: <strong>${p.github?.username ? '@' + escapeHtml(p.github.username) : 'None'}</strong> ${p.github?.username ? `<span class="sub">(${escapeHtml(p.github?.host || 'github.com')})</span>` : ''}</span>
+            <span>GitHub: <strong>${p.github?.username ? '@' + escapeHtml(p.github.username) : 'None'}</strong>${p.github?.username && p.github?.host && p.github.host !== 'github.com' ? ` <span class="sub">(${escapeHtml(p.github.host)})</span>` : ''}</span>
           </div>
           <div class="meta-item">
             ${Icons.link}
             <span class="sub">Scope: ${escapeHtml(p.git.scope || 'local')} · Auth: ${escapeHtml(authText)}</span>
           </div>
         </div>
-        <div class="verify-result-box hidden" id="verify-result-${escapeHtml(p.id)}"></div>
         <div class="btn-group">
           ${!isActive ? `<button type="button" class="btn btn-sm" data-action="switchProfile" data-profile-id="${escapeHtml(p.id)}">Switch</button>` : ''}
-          <button type="button" class="btn btn-sm btn-secondary" data-action="verifyProfile" data-profile-id="${escapeHtml(p.id)}">Verify</button>
           <button type="button" class="btn btn-sm btn-secondary" data-action="editProfile" data-profile-id="${escapeHtml(p.id)}">Edit</button>
           <button type="button" class="btn btn-sm btn-danger" data-action="deleteProfile" data-profile-id="${escapeHtml(p.id)}">Delete</button>
         </div>
@@ -297,10 +297,11 @@ export class HtmlBuilder {
     }
   </div>
 
-  <!-- IN-SIDEBAR PERSISTENT PROFILE FORM -->
-  <div class="section form-section-noborder" id="profile-form-section">
+  <!-- IN-SIDEBAR PERSISTENT PROFILE FORM (collapsed by default, shown on Add/Edit) -->
+  <div class="section form-section-noborder hidden" id="profile-form-section" style="display: none;">
     <div class="section-title-row">
       <span class="section-title" id="form-title">CREATE / EDIT PROFILE</span>
+      <button type="button" class="icon-btn-ghost" title="Close" data-action="cancelProfileForm">✕</button>
     </div>
     <div class="form-box">
       <div id="form-error-msg" class="banner-error hidden"></div>
@@ -329,11 +330,6 @@ export class HtmlBuilder {
       <div class="form-group">
         <label class="form-label" for="form-host">GitHub Host</label>
         <input type="text" id="form-host" class="input-text" value="github.com" placeholder="github.com" autocomplete="off" />
-      </div>
-
-      <div class="form-group">
-        <label class="form-label" for="form-orgs">Allowed Orgs / Owner Patterns <span class="opt">(optional, comma-separated)</span></label>
-        <input type="text" id="form-orgs" class="input-text" placeholder="e.g. acme-corp, my-org, corp-*" autocomplete="off" />
       </div>
 
       <div class="form-group">

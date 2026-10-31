@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.9.0] - 2026-10-31
+
+### Added & Improved
+- **Automatic Background Verification with Color-Coded Profile Names**: Removed manual "Verify" button. Profiles are verified in the background on startup and refresh, dynamically tinting profile names green (valid credentials) or red (verification warning) with hover status tooltips.
+- **On-Demand Profile Form**: The Create/Edit Profile form is now cleanly collapsed by default (`hidden`) and appears smoothly only when clicking `+ Add Profile`, `Edit`, or `+ Import as Profile`. Added close `✕` button to dismiss.
+- **Streamlined UI & Compact Link Logo**: Replaced text button "Open on GitHub" with a compact external link icon button, removed redundant "Bound to repo" tag from the active identity card, and omitted unnecessary `(github.com)` labels on standard GitHub profiles.
+- **Removed Allowed Orgs Input**: Removed the optional Allowed Orgs field from the profile form while preserving existing bindings in the background.
+
+---
+
 ## [0.8.0] - 2026-10-31
 
 ### Security
