@@ -1,5 +1,7 @@
 # <img src="media/icon.png" width="34" height="34" align="center" alt="GitAxis" /> GitAxis — Multi-Profile Git & GitHub Manager for VS Code
 
+[![Visual Studio Marketplace](https://img.shields.io/visual-studio-marketplace/v/mshrinath.gitaxis?logo=visual-studio-code&label=VS%20Code%20Marketplace&color=blue)](https://marketplace.visualstudio.com/items?itemName=mshrinath.gitaxis)
+[![Visual Studio Marketplace Installs](https://img.shields.io/visual-studio-marketplace/i/mshrinath.gitaxis)](https://marketplace.visualstudio.com/items?itemName=mshrinath.gitaxis)
 [![GitHub Release](https://img.shields.io/github/v/release/MShrinath/GitAxis?logo=github&color=blue)](https://github.com/MShrinath/GitAxis/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
 [![Build & Tests](https://img.shields.io/badge/tests-113%20passing-brightgreen.svg)](https://github.com/MShrinath/GitAxis)
@@ -91,7 +93,36 @@ When working across multiple GitHub accounts on the same computer:
 
 ## How to Install
 
-### Method 1: Install from GitHub Releases (Recommended)
+### Method 1: Install from VS Code Marketplace (Recommended)
+
+1. Open **VS Code** or **VS Code Insiders**.
+2. Press `Ctrl+P` (or `Cmd+P` on macOS) and run:
+   ```text
+   ext install mshrinath.gitaxis
+   ```
+   *Alternatively, search for **GitAxis** in the Extensions view (`Ctrl+Shift+X` or `Cmd+Shift+X`).*
+3. Or install directly from the [Visual Studio Marketplace](https://marketplace.visualstudio.com/items?itemName=mshrinath.gitaxis).
+
+---
+
+### Method 2: Install via Command Line
+
+If you have the VS Code CLI in your system `PATH`:
+
+```powershell
+# Install directly from the VS Code Marketplace:
+code --install-extension mshrinath.gitaxis
+
+# For VS Code Insiders:
+code-insiders --install-extension mshrinath.gitaxis
+
+# Or from a downloaded .vsix package:
+code --install-extension gitaxis-0.11.1.vsix
+```
+
+---
+
+### Method 3: Install from GitHub Releases (.vsix)
 
 1. Go to the [GitAxis GitHub Releases Page](https://github.com/MShrinath/GitAxis/releases).
 2. Download the latest `.vsix` package (e.g. `gitaxis-0.11.1.vsix`).
@@ -102,21 +133,7 @@ When working across multiple GitHub accounts on the same computer:
 
 ---
 
-### Method 2: Install via Command Line
-
-If you have VS Code in your system `PATH`:
-
-```powershell
-# For standard VS Code:
-code --install-extension gitaxis-0.11.1.vsix
-
-# For VS Code Insiders:
-code-insiders --install-extension gitaxis-0.11.1.vsix
-```
-
----
-
-### Method 3: Run from Source (Development Mode)
+### Method 4: Run from Source (Development Mode)
 
 If you want to contribute or build from source:
 
