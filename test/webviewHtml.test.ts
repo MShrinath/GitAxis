@@ -69,7 +69,6 @@ describe('Webview HTML Builder (V2 Profile Control Center)', () => {
     assert.ok(html.includes('Work'));
     assert.ok(html.includes('john@company.com'));
     assert.ok(html.includes('@john-work'));
-    assert.ok(html.includes('Linked to:'));
 
     // Repo status & GitHub link
     assert.ok(html.includes('CURRENT REPO:'));
@@ -146,7 +145,7 @@ describe('Webview HTML Builder (V2 Profile Control Center)', () => {
     assert.ok(html.includes('importDiscoveredAccount(0)'));
   });
 
-  it('should render profile action buttons: switch, edit, delete, link', () => {
+  it('should render profile action buttons: switch, edit, delete (without link repo)', () => {
     const secondProfile: GitProfile = {
       ...dummyProfile,
       id: 'prof_2',
@@ -164,16 +163,19 @@ describe('Webview HTML Builder (V2 Profile Control Center)', () => {
 
     const html = HtmlBuilder.render(state);
 
-    // Active profile has Edit, Unlink, Delete
+    // Active profile has Edit, Delete (no link/unlink)
     assert.ok(html.includes("editProfile('prof_1')"));
-    assert.ok(html.includes("unlinkRepo('prof_1')"));
     assert.ok(html.includes("deleteProfile('prof_1'"));
 
-    // Inactive profile has Switch, Edit, Link, Delete
+    // Inactive profile has Switch, Edit, Delete (no link/unlink)
     assert.ok(html.includes("switchProfile('prof_2')"));
     assert.ok(html.includes("editProfile('prof_2')"));
-    assert.ok(html.includes("linkRepo('prof_2')"));
     assert.ok(html.includes("deleteProfile('prof_2'"));
+
+    // Ensure link repo is completely removed from UI
+    assert.strictEqual(html.includes('linkRepo('), false);
+    assert.strictEqual(html.includes('unlinkRepo('), false);
+    assert.strictEqual(html.includes('Linked to:'), false);
   });
 
   it('should handle empty profiles and no opened repository gracefully', () => {
@@ -256,8 +258,8 @@ describe('Webview HTML Builder (V2 Profile Control Center)', () => {
     const html = HtmlBuilder.render(state);
 
     assert.ok(html.includes('LocalOnly'));
-    assert.ok(html.includes('🐙 None'));
+    assert.ok(html.includes('GitHub: <strong>None</strong>'));
     // Should NOT show (github.com) when there is no GitHub user
-    assert.ok(!html.includes('🐙 None <span class="meta-sub">(github.com)</span>'));
+    assert.ok(!html.includes('GitHub: <strong>None</strong> <span class="sub">(github.com)</span>'));
   });
 });
