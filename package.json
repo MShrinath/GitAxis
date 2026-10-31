@@ -2,7 +2,7 @@
   "name": "gitaxis",
   "displayName": "GitAxis - Git & GitHub Profile Manager",
   "description": "Multi-profile Git and GitHub control center for VS Code",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "publisher": "gitaxis",
   "icon": "media/icon.png",
   "repository": {
@@ -70,6 +70,21 @@
       {
         "command": "gitaxis.unbindRepo",
         "title": "Unbind Current Repo from Profile",
+        "category": "GitAxis"
+      },
+      {
+        "command": "gitaxis.showEffectiveIdentity",
+        "title": "Show Effective Identity",
+        "category": "GitAxis"
+      },
+      {
+        "command": "gitaxis.configureFolderRules",
+        "title": "Configure Folder Rules",
+        "category": "GitAxis"
+      },
+      {
+        "command": "gitaxis.removeAllConfig",
+        "title": "Remove All GitAxis Config",
         "category": "GitAxis"
       },
       {
@@ -198,9 +213,21 @@
         "category": "GitAxis"
       }
     ],
+    "keybindings": [
+      {
+        "command": "gitaxis.switchProfile",
+        "key": "ctrl+alt+g",
+        "mac": "cmd+alt+g"
+      }
+    ],
     "configuration": {
       "title": "GitAxis",
       "properties": {
+        "gitaxis.advanced.allowGlobalScope": {
+          "type": "boolean",
+          "default": false,
+          "description": "Advanced: Show global Git identity scope option when creating profiles. Affects system-wide ~/.gitconfig."
+        },
         "gitaxis.guard.mode": {
           "type": "string",
           "enum": [

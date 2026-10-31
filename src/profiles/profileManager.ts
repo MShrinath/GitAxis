@@ -15,17 +15,21 @@ import { GitClient } from '../git/gitClient';
 import { RemoteParser } from '../git/remote';
 import { Platform } from '../utils/platform';
 import { logger } from '../utils/logger';
+import { FolderRuleManager } from './folderRuleManager';
 
 export class ProfileManager {
   private matcher: ProfileMatcher;
+  private folderRuleManager: FolderRuleManager;
 
   constructor(
     private store: PersistentProfileStore,
     private authManager: AuthManager,
     private gitClient: GitClient,
-    matcher?: ProfileMatcher
+    matcher?: ProfileMatcher,
+    folderRuleManager?: FolderRuleManager
   ) {
     this.matcher = matcher ?? new ProfileMatcher(this.store);
+    this.folderRuleManager = folderRuleManager ?? new FolderRuleManager();
   }
 
   public getStore(): PersistentProfileStore {
@@ -34,6 +38,10 @@ export class ProfileManager {
 
   public getMatcher(): ProfileMatcher {
     return this.matcher;
+  }
+
+  public getFolderRuleManager(): FolderRuleManager {
+    return this.folderRuleManager;
   }
 
   public async getProfiles(): Promise<GitProfile[]> {
@@ -321,7 +329,18 @@ export class ProfileManager {
       }
     }
 
-    // 2. Matcher (remote owner, host, email, name)
+    // 2. Folder rule (includeIf / folder path pattern matching)
+    const folderMatch = this.folderRuleManager.resolveProfile(targetPath, profiles);
+    if (folderMatch) {
+      return {
+        profile: folderMatch.profile,
+        source: 'folder-rule',
+        isBound: false,
+        folderRule: folderMatch.rule,
+      };
+    }
+
+    // 3. Matcher (remote owner, host, email, name)
     let remotes = options?.remotes;
     if (!remotes) {
       try {
@@ -356,7 +375,7 @@ export class ProfileManager {
       }
     }
 
-    // 3. Fallback: last-used / active profile
+    // 4. Fallback: last-used / active profile
     const active = await this.store.getActive();
     if (active) {
       return { profile: active, source: 'fallback', isBound: false };
@@ -368,7 +387,8 @@ export class ProfileManager {
 
 export interface ResolvedRepoProfile {
   profile: GitProfile;
-  source: 'binding' | 'matcher' | 'fallback';
+  source: 'binding' | 'folder-rule' | 'matcher' | 'fallback';
   isBound: boolean;
+  folderRule?: string;
   matchResult?: ProfileMatchResult;
 }

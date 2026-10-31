@@ -51,6 +51,7 @@ export interface GitProfile {
   metadata: ProfileMetadata;
   createdAt: ISODateTime;
   updatedAt: ISODateTime;
+  folderRules?: string[];
 }
 
 export interface CreateProfileInput {
@@ -62,6 +63,7 @@ export interface CreateProfileInput {
   description?: string;
   source?: ProfileSource;
   imported?: boolean;
+  folderRules?: string[];
 }
 
 export interface UpdateProfileInput {
@@ -70,6 +72,7 @@ export interface UpdateProfileInput {
   github?: Partial<GitHubIdentityInput>;
   authentication?: Partial<AuthenticationConfigInput>;
   description?: string;
+  folderRules?: string[];
 }
 
 export interface ProfileStore {

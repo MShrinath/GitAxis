@@ -4,7 +4,7 @@ import { SystemDiscovery } from '../discovery/systemDiscovery';
 import { GitClient } from '../git/gitClient';
 import { AuthenticationType, CreateProfileInput, GitIdentityScope } from '../contracts';
 import { Validation } from '../utils/validation';
-
+import { logger } from '../utils/logger';
 import { AccountVerifier } from '../auth/accountVerifier';
 
 export function registerProfileCommands(
@@ -59,17 +59,30 @@ export function registerProfileCommands(
         for (const p of profiles) {
           const isCurrent = p.id === active?.id;
           const isBound = p.id === boundId;
-          const label = `${isCurrent ? '$(check) ' : ''}${p.name}${isBound ? ' (Bound to repo)' : ''}`;
+          const isFolderMatch = resolved?.source === 'folder-rule' && resolved.profile.id === p.id;
+          let badge = '';
+          if (isBound) {
+            badge = ' (Bound to repo)';
+          } else if (isFolderMatch) {
+            badge = ` (Folder Rule: ${resolved.folderRule || ''})`;
+          }
+          const label = `${isCurrent ? '$(check) ' : ''}${p.name}${badge}`;
+          const ghTag = p.github?.username ? `@${p.github.username}` : 'no-github';
           items.push({
             label,
-            description: `${p.git.name} <${p.git.email}>`,
-            detail: `GitHub: @${p.github?.username || 'none'} · Auth: ${p.authentication.type} · Scope: ${p.git.scope}`,
+            description: `${ghTag} · ${p.git.email}`,
+            detail: `${p.git.name} · Auth: ${p.authentication.type} · Scope: ${p.git.scope}${p.folderRules?.length ? ` · Rules: [${p.folderRules.join(', ')}]` : ''}`,
             profileId: p.id,
           });
         }
 
         // Actions
         items.push({ label: 'Repository Actions', kind: vscode.QuickPickItemKind.Separator });
+        items.push({
+          label: '$(info) Show Effective Identity',
+          description: repoRoot ? 'Inspect effective Git identity and resolution rule for this repo' : 'No repo open',
+          action: 'effective-identity',
+        });
         items.push({
           label: '$(link) Bind Current Repo to Profile...',
           description: repoRoot ? 'Set default profile for this repository' : 'No repo open',
@@ -82,6 +95,16 @@ export function registerProfileCommands(
             action: 'unbind',
           });
         }
+        items.push({
+          label: '$(folder) Configure Folder Rules (includeIf)...',
+          description: 'Set up automatic folder-based profiles (~/work/** -> Work)',
+          action: 'folder-rules',
+        });
+        items.push({
+          label: '$(settings-gear) Manage Profiles...',
+          description: 'Rename, edit identity, or delete profiles',
+          action: 'manage',
+        });
         items.push({
           label: '$(pass) Verify Account Authentication...',
           description: 'Test credentials with GitHub',
@@ -97,11 +120,20 @@ export function registerProfileCommands(
         });
         if (!selected) return;
 
-        if (selected.action === 'bind') {
+        if (selected.action === 'effective-identity') {
+          await vscode.commands.executeCommand('gitaxis.showEffectiveIdentity');
+          return;
+        } else if (selected.action === 'bind') {
           await vscode.commands.executeCommand('gitaxis.bindRepo');
           return;
         } else if (selected.action === 'unbind') {
           await vscode.commands.executeCommand('gitaxis.unbindRepo');
+          return;
+        } else if (selected.action === 'folder-rules') {
+          await vscode.commands.executeCommand('gitaxis.configureFolderRules');
+          return;
+        } else if (selected.action === 'manage') {
+          await vscode.commands.executeCommand('gitaxis.manageProfiles');
           return;
         } else if (selected.action === 'verify') {
           await vscode.commands.executeCommand('gitaxis.verifyAccount');
@@ -170,24 +202,29 @@ export function registerProfileCommands(
       });
       if (!gitEmail) return;
 
-      // Step 4: Identity Scope
-      const scopeSelection = await vscode.window.showQuickPick(
-        [
-          { label: 'Repository (Recommended)', description: 'Applies identity locally to the opened repository', scope: 'local' as GitIdentityScope },
-          { label: 'Global', description: 'Sets global Git identity (will prompt before overwriting)', scope: 'global' as GitIdentityScope },
-        ],
-        { title: 'Create Profile (4/6): Identity Scope' }
-      );
-      if (!scopeSelection) return;
-
-      if (scopeSelection.scope === 'global') {
-        const continueBtn = 'Continue';
-        const choice = await vscode.window.showWarningMessage(
-          "You're about to change your global Git identity.",
-          { modal: true, detail: "This affects repositories that don't override their local Git identity." },
-          continueBtn
+      // Step 4: Identity Scope (Advanced option, hidden by default per Section 7)
+      const allowGlobalScope = vscode.workspace.getConfiguration('gitaxis').get<boolean>('advanced.allowGlobalScope', false);
+      let scope: GitIdentityScope = 'local';
+      if (allowGlobalScope) {
+        const scopeSelection = await vscode.window.showQuickPick(
+          [
+            { label: 'Repository (Recommended)', description: 'Applies identity locally to the opened repository', scope: 'local' as GitIdentityScope },
+            { label: 'Global', description: 'Sets global Git identity (will prompt before overwriting)', scope: 'global' as GitIdentityScope },
+          ],
+          { title: 'Create Profile (4/6): Identity Scope (Advanced)' }
         );
-        if (choice !== continueBtn) return;
+        if (!scopeSelection) return;
+        scope = scopeSelection.scope;
+
+        if (scope === 'global') {
+          const continueBtn = 'Continue';
+          const choice = await vscode.window.showWarningMessage(
+            "You're about to change your global Git identity.",
+            { modal: true, detail: "This affects repositories that don't override their local Git identity." },
+            continueBtn
+          );
+          if (choice !== continueBtn) return;
+        }
       }
 
       // Step 5: GitHub Username & Host
@@ -242,7 +279,7 @@ export function registerProfileCommands(
         git: {
           name: gitName.trim(),
           email: gitEmail.trim(),
-          scope: scopeSelection.scope,
+          scope,
         },
         github: githubUsername ? { host: githubHost, username: githubUsername.trim() } : undefined,
         authentication: {
@@ -542,4 +579,238 @@ export function registerProfileCommands(
       );
     })
   );
+
+  // 7. Show Effective Identity (Section 9 & Section 14)
+  context.subscriptions.push(
+    vscode.commands.registerCommand('gitaxis.showEffectiveIdentity', async () => {
+      const repoRoot = await getCurrentRepoRoot();
+      if (!repoRoot) {
+        vscode.window.showWarningMessage('No repository workspace open to show effective identity.');
+        return;
+      }
+
+      const resolved = await profileManager.resolveProfileForRepository(repoRoot);
+      const active = resolved?.profile || (await profileManager.getActiveProfile());
+
+      // Fetch git config
+      let localName = '';
+      let localEmail = '';
+      let effectiveEmail = '';
+      let effectiveName = '';
+      let sshCmd = '';
+      let gcmUser = '';
+      let remotesList: string[] = [];
+
+      try {
+        localName = (await gitClient.getLocalConfig(repoRoot, 'user.name')) || '(not set locally)';
+        localEmail = (await gitClient.getLocalConfig(repoRoot, 'user.email')) || '(not set locally)';
+        effectiveName = (await gitClient.getConfig(repoRoot, 'user.name')) || '(unset)';
+        effectiveEmail = (await gitClient.getConfig(repoRoot, 'user.email')) || '(unset)';
+        sshCmd = (await gitClient.getLocalConfig(repoRoot, 'core.sshCommand')) ||
+          (await gitClient.getGlobalConfig('core.sshCommand')) || '(default ssh)';
+        gcmUser = (await gitClient.getLocalConfig(repoRoot, 'credential.https://github.com.username')) ||
+          (await gitClient.getGlobalConfig('credential.https://github.com.username')) || '(not set)';
+        const remotes = await gitClient.getRemotes(repoRoot);
+        remotesList = remotes.map(r => `${r.name}: ${r.fetchUrl || r.pushUrl || 'none'}`);
+      } catch (err) {
+        logger.warn(`Could not read full repo git config: ${String(err)}`);
+      }
+
+      let ruleExplanation = 'Fallback (Active profile)';
+      if (resolved?.source === 'binding') {
+        ruleExplanation = 'Explicit Repository Binding';
+      } else if (resolved?.source === 'folder-rule') {
+        ruleExplanation = `Folder Rule Pattern ("${resolved.folderRule || 'path match'}")`;
+      } else if (resolved?.source === 'matcher') {
+        ruleExplanation = `Profile Matcher (Remote host/owner/email)`;
+      }
+
+      const report = [
+        `### GitAxis Effective Identity for Repository`,
+        `**Repository:** \`${repoRoot}\``,
+        `**Active Profile:** **${active?.name || 'None'}** (${active?.git.email || 'no email'})`,
+        `**Selection Rule:** ${ruleExplanation}`,
+        ``,
+        `#### Configured in Profile:`,
+        `- **Git Author:** ${active?.git.name || 'none'} <${active?.git.email || 'none'}>`,
+        `- **GitHub Account:** @${active?.github?.username || 'none'} (${active?.github?.host || 'github.com'})`,
+        `- **Auth Method:** ${active?.authentication.type || 'none'}`,
+        active?.folderRules?.length ? `- **Folder Rules:** ${active.folderRules.join(', ')}` : '',
+        ``,
+        `#### Effective Git Config (as seen by Git):`,
+        `- **user.name:** ${effectiveName} (Local: ${localName})`,
+        `- **user.email:** ${effectiveEmail} (Local: ${localEmail})`,
+        `- **core.sshCommand:** \`${sshCmd}\``,
+        `- **credential.https://github.com.username:** ${gcmUser}`,
+        ``,
+        `#### Remotes:`,
+        remotesList.length > 0 ? remotesList.map(r => `- ${r}`).join('\n') : '- (no remotes detected)',
+      ].filter(Boolean).join('\n');
+
+      const copyBtn = 'Copy Details';
+      const switchBtn = 'Switch Profile';
+      const choice = await vscode.window.showInformationMessage(
+        `Effective Identity: "${active?.name || 'None'}" (${effectiveEmail})\nSelected via: ${ruleExplanation}`,
+        { modal: true, detail: report.replace(/### |#### |\*\*/g, '').replace(/`/g, '') },
+        copyBtn,
+        switchBtn
+      );
+
+      if (choice === copyBtn) {
+        await vscode.env.clipboard.writeText(report);
+        vscode.window.showInformationMessage('Effective identity report copied to clipboard.');
+      } else if (choice === switchBtn) {
+        await vscode.commands.executeCommand('gitaxis.switchProfile');
+      }
+    })
+  );
+
+  // 8. Configure Folder Rules (Section 7)
+  context.subscriptions.push(
+    vscode.commands.registerCommand('gitaxis.configureFolderRules', async () => {
+      const folderRuleManager = profileManager.getFolderRuleManager();
+      const profiles = await profileManager.getProfiles();
+      if (profiles.length === 0) {
+        vscode.window.showWarningMessage('No profiles found. Please create a profile first.');
+        return;
+      }
+
+      // Profile selection
+      const items = profiles.map(p => ({
+        label: p.name,
+        description: `@${p.github?.username || 'no-github'} · ${p.git.email}`,
+        detail: p.folderRules && p.folderRules.length > 0
+          ? `Active Rules: ${p.folderRules.join(', ')}`
+          : 'No folder rules configured yet',
+        profileId: p.id,
+      }));
+
+      const selected = await vscode.window.showQuickPick(items, {
+        placeHolder: 'Select profile to configure folder rules for',
+      });
+      if (!selected) return;
+
+      const profile = await profileManager.getProfile(selected.profileId);
+      if (!profile) return;
+
+      const currentRules = profile.folderRules || [];
+
+      // Action selection for this profile
+      type RuleAction = vscode.QuickPickItem & { action: string; ruleIndex?: number };
+      const actionItems: RuleAction[] = [
+        {
+          label: '$(plus) Add New Folder Rule...',
+          description: 'e.g. ~/work/** or C:/projects/work/**',
+          action: 'add',
+        },
+      ];
+
+      for (let i = 0; i < currentRules.length; i++) {
+        actionItems.push({
+          label: `$(trash) Remove rule: "${currentRules[i]}"`,
+          action: 'remove',
+          ruleIndex: i,
+        });
+      }
+
+      actionItems.push({
+        label: '$(cloud-upload) Apply Folder Rules to ~/.gitconfig (includeIf)...',
+        description: 'Write GitAxis per-profile include files and update ~/.gitconfig',
+        action: 'apply',
+      });
+
+      actionItems.push({
+        label: '$(clear-all) Remove All GitAxis Config from ~/.gitconfig',
+        description: 'Cleanly remove all includeIf rules from ~/.gitconfig',
+        action: 'remove-all',
+      });
+
+      const chosenAction = await vscode.window.showQuickPick(actionItems, {
+        placeHolder: `Folder rules for "${profile.name}" (${currentRules.length} configured)`,
+      });
+      if (!chosenAction) return;
+
+      if (chosenAction.action === 'add') {
+        const repoRoot = await getCurrentRepoRoot();
+        const defaultSuggestion = repoRoot ? `${repoRoot}/**` : '~/work/**';
+
+        const newRule = await vscode.window.showInputBox({
+          title: `Add Folder Rule for "${profile.name}"`,
+          prompt: 'Enter folder path or pattern. Git repositories in this directory will automatically use this profile.',
+          value: defaultSuggestion,
+          validateInput: val => (val.trim().length > 0 ? undefined : 'Rule cannot be empty'),
+        });
+        if (!newRule) return;
+
+        const updatedRules = [...currentRules, newRule.trim()];
+        await profileManager.updateProfile(profile.id, { folderRules: updatedRules });
+        vscode.window.showInformationMessage(`Added folder rule "${newRule.trim()}" to profile "${profile.name}".`);
+
+        const applyNow = 'Apply to ~/.gitconfig now';
+        const res = await vscode.window.showInformationMessage(
+          `Folder rule saved. Would you like to update your global ~/.gitconfig with includeIf rules?`,
+          applyNow,
+          'Later'
+        );
+        if (res === applyNow) {
+          const allProfiles = await profileManager.getProfiles();
+          const preview = await folderRuleManager.previewIncludeIfChanges(allProfiles);
+          const confirmBtn = 'Confirm & Apply';
+          const confirm = await vscode.window.showInformationMessage(
+            `GitAxis will add the following to ~/.gitconfig:\n\n${preview.includeIfBlock}`,
+            { modal: true },
+            confirmBtn
+          );
+          if (confirm === confirmBtn) {
+            await folderRuleManager.applyIncludeIfRules(allProfiles);
+            vscode.window.showInformationMessage('Successfully applied folder rules to ~/.gitconfig!');
+          }
+        }
+        onProfileChanged?.();
+      } else if (chosenAction.action === 'remove' && chosenAction.ruleIndex !== undefined) {
+        const updatedRules = currentRules.filter((_, idx) => idx !== chosenAction.ruleIndex);
+        await profileManager.updateProfile(profile.id, { folderRules: updatedRules });
+        vscode.window.showInformationMessage(`Removed folder rule from profile "${profile.name}".`);
+        onProfileChanged?.();
+      } else if (chosenAction.action === 'apply') {
+        const allProfiles = await profileManager.getProfiles();
+        const preview = await folderRuleManager.previewIncludeIfChanges(allProfiles);
+        const confirmBtn = 'Confirm & Apply';
+        const confirm = await vscode.window.showInformationMessage(
+          `GitAxis will update ~/.gitconfig with includeIf rules:\n\n${preview.includeIfBlock || '(No active folder rules)'}`,
+          { modal: true },
+          confirmBtn
+        );
+        if (confirm === confirmBtn) {
+          await folderRuleManager.applyIncludeIfRules(allProfiles);
+          vscode.window.showInformationMessage('Successfully updated ~/.gitconfig with GitAxis folder rules!');
+        }
+      } else if (chosenAction.action === 'remove-all') {
+        await vscode.commands.executeCommand('gitaxis.removeAllConfig');
+      }
+    })
+  );
+
+  // 9. Remove All GitAxis Config (Section 7)
+  context.subscriptions.push(
+    vscode.commands.registerCommand('gitaxis.removeAllConfig', async () => {
+      const folderRuleManager = profileManager.getFolderRuleManager();
+      const confirmBtn = 'Remove Config';
+      const choice = await vscode.window.showWarningMessage(
+        'Are you sure you want to remove all GitAxis includeIf configurations from your global ~/.gitconfig?',
+        { modal: true, detail: 'This removes the # GitAxis Start / # GitAxis End block and cleans profile include files.' },
+        confirmBtn
+      );
+      if (choice !== confirmBtn) return;
+
+      const res = await folderRuleManager.removeAllGitAxisConfig();
+      if (res.removed) {
+        vscode.window.showInformationMessage('Successfully removed all GitAxis configurations from ~/.gitconfig.');
+      } else {
+        vscode.window.showInformationMessage('No GitAxis configurations were found in ~/.gitconfig.');
+      }
+      onProfileChanged?.();
+    })
+  );
 }
+

@@ -2,7 +2,7 @@
 
 [![GitHub Release](https://img.shields.io/github/v/release/MShrinath/GitAxis?logo=github&color=blue)](https://github.com/MShrinath/GitAxis/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
-[![Build & Tests](https://img.shields.io/badge/tests-67%20passing-brightgreen.svg)](https://github.com/MShrinath/GitAxis)
+[![Build & Tests](https://img.shields.io/badge/tests-80%20passing-brightgreen.svg)](https://github.com/MShrinath/GitAxis)
 [![VS Code](https://img.shields.io/badge/VS%20Code-1.85%2B-007acc.svg?logo=visualstudiocode)](https://code.visualstudio.com/)
 
 **GitAxis** is a dedicated identity and profile manager for Visual Studio Code and VS Code Insiders. 
@@ -27,7 +27,10 @@ When working across multiple GitHub accounts on the same computer:
 
 ## Key Features
 
-- **Per-Repository Profile Binding**: Bind identities directly to repositories (explicit binding &rarr; matcher &rarr; global fallback). Switching a profile in one repository never alters other repositories in multi-root workspaces.
+- **Folder Rules via `includeIf` ("Set-and-Forget")**: Define folder path rules (e.g. `~/work/**` &rarr; *Work*, `~/personal/**` &rarr; *Personal*). GitAxis generates include files in `~/.gitaxis/profiles/<profile>.gitconfig` and manages `[includeIf "gitdir:..."]` blocks in your global `~/.gitconfig` with full preview and 1-click clean removal.
+- **Show Effective Identity Inspector**: Inspect the active repository's effective `user.name`, `user.email`, `core.sshCommand`, GCM credentials, and remotes, alongside the deterministic rule (*Explicit Binding*, *Folder Rule*, *Profile Matcher*, or *Fallback*) that resolved them.
+- **Per-Repository Profile Binding**: Bind identities directly to repositories. Switching a profile in one repository never alters other repositories in multi-root workspaces.
+- **Quick Profile Switcher with Default Keybinding**: Press `Ctrl+Alt+G` (or `Cmd+Alt+G` on macOS) to instantly switch profiles, bind repos, or inspect identity.
 - **Commit & Push Guard**:
   - **Commit Guard**: Verifies that the repo's configured `user.email` and `user.name` match the active profile before you commit. Offers 1-click **Fix and continue**, **Commit anyway**, or **Cancel**.
   - **Push Guard**: Verifies the remote repository owner against the profile's allowed organizations/usernames (`orgs` list or wildcards) before pushing.
@@ -35,6 +38,7 @@ When working across multiple GitHub accounts on the same computer:
 - **Inline Account Verification**: 1-click **Verify** button per profile in the sidebar. Tests PAT permissions & expiration via GitHub API, GitHub CLI credentials (`gh auth token --user <username>`), or SSH handshake (`ssh -T git@github.com -o IdentitiesOnly=yes`).
 - **SSH Key Isolation**: Always injects `-o IdentitiesOnly=yes` into `core.sshCommand` (`ssh -i "<key>" -o IdentitiesOnly=yes`) to ensure `ssh-agent` offers only the explicitly assigned key.
 - **Dynamic Status Bar & Mismatch Warning**: Status bar dynamically tracks the active editor's repository (`$(github) work-user`). If the local git config email differs from the bound profile, GitAxis flags a warning icon (`$(warning)`) with a helpful tooltip.
+- **Protected Global Scope**: Global Git identity writes are hidden behind an advanced setting (`gitaxis.advanced.allowGlobalScope`) to prevent accidental machine-wide config overwrites.
 - **Instant 1-Click Identity Switching**: Switch author names, emails, and GitHub accounts in seconds directly from the sidebar or the status bar.
 - **Automated Credential & Remote Alignment**:
   - Automatically targets Git Credential Manager (`credential.https://${host}.username`).
@@ -80,7 +84,7 @@ When working across multiple GitHub accounts on the same computer:
 ### Method 1: Install from GitHub Releases (Recommended)
 
 1. Go to the [GitAxis GitHub Releases Page](https://github.com/MShrinath/GitAxis/releases).
-2. Download the latest `.vsix` package (e.g. `gitaxis-0.5.0.vsix`).
+2. Download the latest `.vsix` package (e.g. `gitaxis-0.6.0.vsix`).
 3. Open **VS Code** or **VS Code Insiders**.
 4. Open the Extensions view (`Ctrl+Shift+X` or `Cmd+Shift+X`).
 5. Click the **`···`** (Views and More Actions) menu in the top right of the Extensions panel.
@@ -94,10 +98,10 @@ If you have VS Code in your system `PATH`:
 
 ```powershell
 # For standard VS Code:
-code --install-extension gitaxis-0.5.0.vsix
+code --install-extension gitaxis-0.6.0.vsix
 
 # For VS Code Insiders:
-code-insiders --install-extension gitaxis-0.5.0.vsix
+code-insiders --install-extension gitaxis-0.6.0.vsix
 ```
 
 ---

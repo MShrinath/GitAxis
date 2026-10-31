@@ -108,6 +108,9 @@ export class PersistentProfileStore implements ProfileStore {
         imported: input.imported ?? false,
         description: input.description,
       },
+      folderRules: input.folderRules
+        ? input.folderRules.map(r => r.trim()).filter(Boolean)
+        : undefined,
       createdAt: now,
       updatedAt: now,
     };
@@ -172,6 +175,10 @@ export class PersistentProfileStore implements ProfileStore {
           ? { sshKeyPath: input.authentication.sshKeyPath.trim() || undefined }
           : {}),
       },
+      folderRules:
+        input.folderRules !== undefined
+          ? input.folderRules.map(r => r.trim()).filter(Boolean)
+          : current.folderRules,
       metadata: {
         ...current.metadata,
         ...(input.description !== undefined ? { description: input.description } : {}),

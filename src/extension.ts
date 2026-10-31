@@ -145,6 +145,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
     let active: any | undefined;
     let isBound = false;
+    let folderRule: string | undefined;
     if (repo) {
       const resolved = await profileManager.resolveProfileForRepository(repo.path, {
         remotes: repo.remotes,
@@ -152,6 +153,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       });
       active = resolved?.profile;
       isBound = Boolean(resolved?.isBound);
+      folderRule = resolved?.source === 'folder-rule' ? resolved.folderRule : undefined;
     } else {
       active = await profileManager.getActiveProfile();
     }
@@ -169,6 +171,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         statusBarItem.tooltip = new vscode.MarkdownString(
           `$(warning) **GitAxis Profile Mismatch**\n\n` +
           `- **Resolved Profile:** ${active.name} (${active.git.email})\n` +
+          `${folderRule ? `- **Folder Rule:** \`${folderRule}\`\n` : ''}` +
           `- **Repo git config \`user.email\`:** ${repoEmail}\n\n` +
           `*Click to switch profile or fix git identity.*`
         );
@@ -180,6 +183,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         statusBarItem.tooltip = new vscode.MarkdownString(
           `**GitAxis Profile:** ${active.name} (${active.git.email})\n\n` +
           `${isBound ? '*(Bound to this repo)*\n\n' : ''}` +
+          `${folderRule ? `*(Matched folder rule: \`${folderRule}\`)*\n\n` : ''}` +
           `*Click to switch or manage.*`
         );
         statusBarItem.backgroundColor = undefined;
@@ -245,6 +249,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
     const boundId = await profileManager.getAssociation(repo.path);
     if (boundId) return; // Already explicitly bound
+
+    // If already covered by a folder rule ("Set-and-Forget"), do not prompt
+    const resolved = await profileManager.resolveProfileForRepository(repo.path, {
+      remotes: repo.remotes,
+    });
+    if (resolved?.source === 'folder-rule') return;
 
     if (promptedRepos.has(repo.path)) return; // Already prompted during this session
     promptedRepos.add(repo.path);
