@@ -77,8 +77,22 @@ export class GitHubClient {
           }
         }
 
-        return (await response.json()) as T;
+        if (response.status === 204) {
+          return undefined as unknown as T;
+        }
+
+        const text = await response.text();
+        if (!text || text.trim() === '') {
+          return undefined as unknown as T;
+        }
+
+        return JSON.parse(text) as T;
       }
+    }
+
+    // If no credential was provided and no username specified, fail rather than running as wrong default account
+    if (!this.auth?.credential && !this.auth?.username) {
+      throw new Error(`Authentication required for GitHub API ${endpoint}: No token or credentials available.`);
     }
 
     // Fallback to gh api if gh is installed
@@ -91,7 +105,15 @@ export class GitHubClient {
         ghArgs.push('--input', '-');
       }
 
-      const child = execFile('gh', ghArgs, { timeout: 15000, shell: process.platform === 'win32' }, () => {});
+      const env: NodeJS.ProcessEnv = { ...process.env };
+      if (this.auth?.credential) {
+        env.GH_TOKEN = this.auth.credential;
+      }
+      if (this.host) {
+        env.GH_HOST = this.host;
+      }
+
+      const child = execFile('gh', ghArgs, { timeout: 15000, env }, () => {});
       if (body && child.stdin) {
         child.stdin.write(JSON.stringify(body));
         child.stdin.end();
@@ -108,6 +130,10 @@ export class GitHubClient {
           else reject(new Error(errOut || `gh api failed with code ${code}`));
         });
       });
+
+      if (!stdout || stdout.trim() === '') {
+        return undefined as unknown as T;
+      }
 
       return JSON.parse(stdout) as T;
     } catch (err) {
@@ -146,8 +172,9 @@ export class GitHubClient {
     };
   }
 
-  public async createRepository(name: string, description?: string, isPrivate: boolean = false): Promise<GitHubRepoSummary> {
-    const r = await this.request<any>('/user/repos', 'POST', {
+  public async createRepository(name: string, description?: string, isPrivate: boolean = false, owner?: string): Promise<GitHubRepoSummary> {
+    const endpoint = owner ? `/orgs/${owner}/repos` : '/user/repos';
+    const r = await this.request<any>(endpoint, 'POST', {
       name,
       description,
       private: isPrivate,

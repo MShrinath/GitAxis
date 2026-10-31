@@ -54,4 +54,5 @@ export interface ResolvedAuthentication {
   type: AuthenticationType;
   username?: string;
   credential?: string;
+  host?: string;
 }

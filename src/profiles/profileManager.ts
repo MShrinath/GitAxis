@@ -349,6 +349,7 @@ export class ProfileManager {
         source: 'folder-rule',
         isBound: false,
         folderRule: folderMatch.rule,
+        isApplied: this.folderRuleManager.isIncludeIfConfigured(),
       };
     }
 
@@ -396,5 +397,6 @@ export interface ResolvedRepoProfile {
   source: 'binding' | 'folder-rule' | 'matcher' | 'fallback';
   isBound: boolean;
   folderRule?: string;
+  isApplied?: boolean;
   matchResult?: ProfileMatchResult;
 }

@@ -5,6 +5,7 @@ import { ExtraheaderMigration, IMigrationMemento } from '../src/migrations/extra
 import { PersistentProfileStore } from '../src/profiles/profileStore';
 import { HtmlBuilder, WebviewState } from '../src/webview/html';
 import { GitProfile } from '../src/contracts';
+import { FolderRuleManager } from '../src/profiles/folderRuleManager';
 
 describe('Security & Validation (v0.4.0)', () => {
   describe('Git Argument Validation (Section 6)', () => {
@@ -222,6 +223,96 @@ describe('Security & Validation (v0.4.0)', () => {
 
       // Token label indicates token saved without exposing plaintext token
       assert.ok(html.includes('PAT (token saved)'));
+    });
+  });
+
+  describe('v0.8.0 Hardening & Precision Fixes', () => {
+    it('should reject invalid stash refs and log branch refs', async () => {
+      const git = new GitClient('git');
+      await assert.rejects(async () => {
+        await git.stashApply('/mock', '-m');
+      }, /Invalid stash ref/);
+
+      await assert.rejects(async () => {
+        await git.log('/mock', 10, '--bad-flag');
+      }, /Invalid log branch\/ref/);
+    });
+
+    it('should insert -- before url and destination in clone', async () => {
+      const git = new GitClient('git');
+      let capturedArgs: string[] = [];
+      git.exec = async (args: string[]) => {
+        capturedArgs = args;
+        return { stdout: '', stderr: '' };
+      };
+
+      await git.clone('https://github.com/org/repo.git', '/target/path');
+      assert.strictEqual(capturedArgs.includes('--'), true);
+      const dashDashIndex = capturedArgs.indexOf('--');
+      assert.strictEqual(capturedArgs[dashDashIndex + 1], 'https://github.com/org/repo.git');
+      assert.strictEqual(capturedArgs[dashDashIndex + 2], '/target/path');
+    });
+
+    it('should sort includeIf rules ascending by length so specific rules evaluate last in git', () => {
+      const folderRuleManager = new FolderRuleManager();
+      const p1: GitProfile = {
+        id: 'p1',
+        name: 'Broad',
+        git: { name: 'Broad', email: 'b@c.com', scope: 'local' },
+        authentication: { type: 'none', source: 'user-input' },
+        metadata: { source: 'manual' },
+        createdAt: '',
+        updatedAt: '',
+        folderRules: ['~/work/**'],
+      };
+      const p2: GitProfile = {
+        id: 'p2',
+        name: 'Specific',
+        git: { name: 'Specific', email: 's@c.com', scope: 'local' },
+        authentication: { type: 'none', source: 'user-input' },
+        metadata: { source: 'manual' },
+        createdAt: '',
+        updatedAt: '',
+        folderRules: ['~/work/special-team/project/**'],
+      };
+
+      const block = folderRuleManager.generateIncludeIfBlock([p2, p1]);
+      const idxBroad = block.indexOf('~/work/');
+      const idxSpecific = block.indexOf('~/work/special-team/project/');
+      assert.ok(idxBroad !== -1);
+      assert.ok(idxSpecific !== -1);
+      // Specific rule must come AFTER broad rule in .gitconfig for Git last-match-wins
+      assert.ok(idxSpecific > idxBroad);
+    });
+
+    it('should preserve custom non-auth extraheaders in ExtraheaderMigration', async () => {
+      class MockMemento implements IMigrationMemento {
+        private map = new Map<string, any>();
+        public get<T>(k: string, def?: T): T { return this.map.has(k) ? this.map.get(k) : (def as T); }
+        public async update(k: string, v: unknown): Promise<void> { this.map.set(k, v); }
+      }
+
+      const memento = new MockMemento();
+      const store = new PersistentProfileStore();
+      await store.setAssociation('/mock/repo1', 'p1');
+
+      const localConfigs = new Map<string, string>();
+      localConfigs.set('http.extraheader', 'X-Custom-CI: keep-this');
+
+      const mockGit = new GitClient('git');
+      mockGit.isRepository = async () => true;
+      mockGit.exec = async (args: string[]) => {
+        if (args.includes('--get-regexp')) {
+          return { stdout: 'http.extraheader X-Custom-CI: keep-this', stderr: '' };
+        }
+        return { stdout: '', stderr: '' };
+      };
+      mockGit.unsetLocalConfig = async (_p: string, k: string) => { localConfigs.delete(k); };
+      mockGit.getLocalConfig = async (_p: string, k: string) => localConfigs.get(k);
+
+      const cleaned = await ExtraheaderMigration.run(store, mockGit, memento);
+      assert.strictEqual(cleaned, 0);
+      assert.strictEqual(localConfigs.get('http.extraheader'), 'X-Custom-CI: keep-this');
     });
   });
 });

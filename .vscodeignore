@@ -11,6 +11,8 @@ DATA-CONTRACTS.md
 *.md
 !README.md
 !readme.md
+!CHANGELOG.md
+!changelog.md
 .gitignore
 .gemini/**
 node_modules/**

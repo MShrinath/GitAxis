@@ -14,6 +14,7 @@ export interface IMigrationMemento {
 
 export class ExtraheaderMigration {
   public static readonly MIGRATION_KEY = 'gitaxis.migratedExtraheaderV040';
+  public static readonly MIGRATED_REPOS_KEY = 'gitaxis.migratedRepoExtraheaders';
 
   public static async run(
     profileStore: PersistentProfileStore,
@@ -22,11 +23,7 @@ export class ExtraheaderMigration {
     workspacePaths?: string[],
     notifyFn?: (msg: string) => void
   ): Promise<number> {
-
-    const alreadyMigrated = memento.get<boolean>(this.MIGRATION_KEY, false);
-    if (alreadyMigrated) {
-      return 0;
-    }
+    const migratedRepos = new Set<string>(memento.get<string[]>(this.MIGRATED_REPOS_KEY, []));
 
     const repoPathsSet = new Set<string>();
 
@@ -50,9 +47,14 @@ export class ExtraheaderMigration {
     let cleanedCount = 0;
 
     for (const repoPath of repoPathsSet) {
+      if (migratedRepos.has(repoPath)) continue;
+
       try {
         const isRepo = await gitClient.isRepository(repoPath);
-        if (!isRepo) continue;
+        if (!isRepo) {
+          migratedRepos.add(repoPath);
+          continue;
+        }
 
         let foundAny = false;
         try {
@@ -63,10 +65,17 @@ export class ExtraheaderMigration {
           if (stdout) {
             const lines = stdout.split('\n');
             for (const line of lines) {
-              const key = line.split(' ')[0]?.trim();
-              if (key) {
-                await gitClient.unsetLocalConfig(repoPath, key);
-                foundAny = true;
+              const trimmed = line.trim();
+              if (!trimmed) continue;
+              const match = trimmed.match(/^(\S+)\s+(.*)$/);
+              if (match) {
+                const key = match[1];
+                const val = match[2];
+                // Only clean headers that contain basic authorization tokens
+                if (/^authorization:\s*basic/i.test(val.trim())) {
+                  await gitClient.unsetLocalConfig(repoPath, key);
+                  foundAny = true;
+                }
               }
             }
           }
@@ -76,11 +85,13 @@ export class ExtraheaderMigration {
 
         try {
           const generalExtraheader = await gitClient.getLocalConfig(repoPath, 'http.extraheader');
-          if (generalExtraheader) {
+          if (generalExtraheader && /^authorization:\s*basic/i.test(generalExtraheader.trim())) {
             await gitClient.unsetLocalConfig(repoPath, 'http.extraheader');
             foundAny = true;
           }
         } catch {}
+
+        migratedRepos.add(repoPath);
 
         if (foundAny) {
           cleanedCount++;
@@ -91,6 +102,7 @@ export class ExtraheaderMigration {
       }
     }
 
+    await memento.update(this.MIGRATED_REPOS_KEY, Array.from(migratedRepos));
     await memento.update(this.MIGRATION_KEY, true);
 
     if (cleanedCount > 0) {

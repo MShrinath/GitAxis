@@ -312,16 +312,25 @@ export class GitClient {
   }
 
   public async stashApply(repoPath: string, stashRef: string = 'stash@{0}', options?: GitExecOptions): Promise<string> {
+    if (!Validation.isValidRef(stashRef)) {
+      throw new Error(`Invalid stash ref: "${stashRef}"`);
+    }
     const { stdout } = await this.exec(['stash', 'apply', stashRef], { cwd: repoPath, ...options });
     return stdout;
   }
 
   public async stashPop(repoPath: string, stashRef: string = 'stash@{0}', options?: GitExecOptions): Promise<string> {
+    if (!Validation.isValidRef(stashRef)) {
+      throw new Error(`Invalid stash ref: "${stashRef}"`);
+    }
     const { stdout } = await this.exec(['stash', 'pop', stashRef], { cwd: repoPath, ...options });
     return stdout;
   }
 
   public async stashDrop(repoPath: string, stashRef: string = 'stash@{0}', options?: GitExecOptions): Promise<string> {
+    if (!Validation.isValidRef(stashRef)) {
+      throw new Error(`Invalid stash ref: "${stashRef}"`);
+    }
     const { stdout } = await this.exec(['stash', 'drop', stashRef], { cwd: repoPath, ...options });
     return stdout;
   }
@@ -397,7 +406,12 @@ export class GitClient {
 
   public async log(repoPath: string, maxCount: number = 20, branch?: string, filePath?: string, options?: GitExecOptions): Promise<CommitInfo[]> {
     const args = ['log', `-n${maxCount}`, '--format=%H%x1f%an%x1f%ae%x1f%aI%x1f%s%x1e'];
-    if (branch) args.push(branch);
+    if (branch) {
+      if (!Validation.isValidRef(branch)) {
+        throw new Error(`Invalid log branch/ref: "${branch}"`);
+      }
+      args.push(branch);
+    }
     if (filePath) args.push('--', filePath);
     const { stdout } = await this.exec(args, { cwd: repoPath, ...options });
     return CommitParser.parseLog(stdout);
@@ -434,7 +448,7 @@ export class GitClient {
     const args = ['clone'];
     if (branch) args.push('-b', branch);
     if (depth) args.push('--depth', depth.toString());
-    args.push(url, destinationPath);
+    args.push('--', url, destinationPath);
     await this.exec(args, options);
   }
 

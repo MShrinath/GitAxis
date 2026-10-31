@@ -244,7 +244,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   registerCommitCommands(context, operationManager, refreshAll);
   registerSyncCommands(context, operationManager, refreshAll);
   registerStashCommands(context, operationManager, refreshAll);
-  registerTagCommands(context, operationManager, refreshAll);
+  registerTagCommands(context, operationManager, gitClient, refreshAll);
   registerGitHubCommands(context, operationManager, repoDiscovery);
 
   // 6. Handle Workspace Folder Changes & Auto Profile Matching (Section 2)
@@ -255,11 +255,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     const boundId = await profileManager.getAssociation(repo.path);
     if (boundId) return; // Already explicitly bound
 
-    // If already covered by a folder rule ("Set-and-Forget"), do not prompt
+    // If already covered by an applied folder rule ("Set-and-Forget"), do not prompt
     const resolved = await profileManager.resolveProfileForRepository(repo.path, {
       remotes: repo.remotes,
     });
-    if (resolved?.source === 'folder-rule') return;
+    if (resolved?.source === 'folder-rule' && resolved.isApplied) return;
 
     if (promptedRepos.has(repo.path)) return; // Already prompted during this session
     promptedRepos.add(repo.path);
@@ -345,21 +345,35 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }, 1000);
   }
 
+  let lastActiveRepoPath: string | undefined;
+  let activeEditorDebounceTimer: NodeJS.Timeout | undefined;
+
   // Listen to active editor changes to keep status bar and sidebar aligned in multi-root workspaces
   context.subscriptions.push(
-    vscode.window.onDidChangeActiveTextEditor(async () => {
-      try {
-        await refreshAll();
-        const currentPath = getActiveRepositoryPath();
-        if (currentPath) {
-          const repo = await repoDiscovery.detectRepository(currentPath);
-          if (repo) {
-            await promptUnboundRepo(repo);
-          }
-        }
-      } catch (err) {
-        logger.error(`Active editor switch error: ${String(err)}`);
+    vscode.window.onDidChangeActiveTextEditor(() => {
+      if (activeEditorDebounceTimer) {
+        clearTimeout(activeEditorDebounceTimer);
       }
+      activeEditorDebounceTimer = setTimeout(async () => {
+        try {
+          const currentPath = getActiveRepositoryPath();
+          if (currentPath !== lastActiveRepoPath) {
+            lastActiveRepoPath = currentPath;
+            await updateStatusBar();
+            if (sidebarProvider) {
+              await sidebarProvider.refresh();
+            }
+            if (currentPath) {
+              const repo = await repoDiscovery.detectRepository(currentPath);
+              if (repo) {
+                await promptUnboundRepo(repo);
+              }
+            }
+          }
+        } catch (err) {
+          logger.error(`Active editor switch error: ${String(err)}`);
+        }
+      }, 250);
     })
   );
 

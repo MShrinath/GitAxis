@@ -48,6 +48,7 @@ export class AuthManager {
           type: 'pat',
           username,
           credential: token,
+          host,
         };
       }
 
@@ -57,6 +58,7 @@ export class AuthManager {
           type: 'github-cli',
           username,
           credential: token,
+          host,
         };
       }
 
@@ -64,6 +66,7 @@ export class AuthManager {
         return {
           type: 'credential-manager',
           username,
+          host,
         };
       }
 
@@ -71,6 +74,7 @@ export class AuthManager {
         return {
           type: 'ssh',
           username,
+          host,
         };
       }
 
@@ -80,6 +84,7 @@ export class AuthManager {
           type: 'oauth',
           username,
           credential: token,
+          host,
         };
       }
 
@@ -88,6 +93,7 @@ export class AuthManager {
         return {
           type: 'none',
           username,
+          host,
         };
     }
   }

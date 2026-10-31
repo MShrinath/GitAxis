@@ -374,17 +374,30 @@
       const resBox = document.getElementById('verify-result-' + msg.profileId);
       if (resBox && msg.result) {
         resBox.classList.remove('hidden');
+        resBox.textContent = '';
+
+        var badge = document.createElement('div');
+        badge.className = msg.result.success ? 'badge badge-success' : 'badge badge-danger';
+        badge.textContent = (msg.result.success ? '✓ ' : '✗ ') + (msg.result.message || (msg.result.success ? 'Verified' : 'Verification failed'));
+        resBox.appendChild(badge);
+
         if (msg.result.success) {
-          var detail = '<div class="badge badge-success">✓ ' + (msg.result.message || 'Verified') + '</div>';
           if (msg.result.scopes && msg.result.scopes.length > 0) {
-            detail += '<div class="sub" style="margin-top:2px; font-size:10px;">Scopes: ' + msg.result.scopes.join(', ') + '</div>';
+            var sc = document.createElement('div');
+            sc.className = 'sub';
+            sc.style.marginTop = '2px';
+            sc.style.fontSize = '10px';
+            sc.textContent = 'Scopes: ' + msg.result.scopes.join(', ');
+            resBox.appendChild(sc);
           }
           if (msg.result.expiration) {
-            detail += '<div class="sub" style="margin-top:2px; font-size:10px;">Expires: ' + msg.result.expiration + '</div>';
+            var exp = document.createElement('div');
+            exp.className = 'sub';
+            exp.style.marginTop = '2px';
+            exp.style.fontSize = '10px';
+            exp.textContent = 'Expires: ' + msg.result.expiration;
+            resBox.appendChild(exp);
           }
-          resBox.innerHTML = detail;
-        } else {
-          resBox.innerHTML = '<div class="badge badge-danger">✗ ' + (msg.result.message || 'Verification failed') + '</div>';
         }
       }
     } else if (msg.command === 'profileDeleted') {

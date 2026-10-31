@@ -35,6 +35,19 @@ export class FolderRuleManager {
   }
 
   /**
+   * Check if GitAxis includeIf configuration block is currently applied to global .gitconfig.
+   */
+  public isIncludeIfConfigured(): boolean {
+    try {
+      if (fs.existsSync(this.gitConfigPath)) {
+        const content = fs.readFileSync(this.gitConfigPath, 'utf8');
+        return content.includes(GITAXIS_CONFIG_START);
+      }
+    } catch {}
+    return false;
+  }
+
+  /**
    * Normalize a folder path or glob pattern for gitdir matching.
    * Converts backslashes to forward slashes, expands tilde, and removes trailing wildcards/slashes.
    */
@@ -158,12 +171,14 @@ export class FolderRuleManager {
    * Generate content for a single profile's .gitconfig include file.
    */
   public generateProfileGitConfig(profile: GitProfile): string {
+    const cleanName = profile.git.name.replace(/[\r\n]+/g, ' ').replace(/"/g, '\\"');
+    const cleanEmail = profile.git.email.replace(/[\r\n]+/g, '').trim();
     const lines: string[] = [
       `# GitAxis Profile: ${profile.name}`,
       `# Generated automatically. Do not edit directly.`,
       `[user]`,
-      `\tname = ${profile.git.name}`,
-      `\temail = ${profile.git.email}`,
+      `\tname = ${cleanName}`,
+      `\temail = ${cleanEmail}`,
     ];
 
     // SSH core.sshCommand
@@ -247,6 +262,9 @@ export class FolderRuleManager {
     if (rulesToEmit.length === 0) {
       return '';
     }
+
+    // Sort rules by condition length ascending so that more specific (longer) rules are placed later in .gitconfig (Git's last match wins)
+    rulesToEmit.sort((a, b) => a.condition.length - b.condition.length);
 
     const lines: string[] = [
       GITAXIS_CONFIG_START,
@@ -345,9 +363,8 @@ export class FolderRuleManager {
       logger.info(`Wrote GitAxis include config for ${profile.name} at ${filePath}`);
     }
 
-    // Write updated ~/.gitconfig
-    await fs.promises.mkdir(path.dirname(this.gitConfigPath), { recursive: true });
-    await fs.promises.writeFile(this.gitConfigPath, preview.updatedConfig, 'utf8');
+    // Write updated ~/.gitconfig safely with backup and atomic write
+    await this.safeWriteGitConfig(this.gitConfigPath, preview.updatedConfig);
     filesWritten.push(this.gitConfigPath);
     logger.info(`Updated global gitconfig with includeIf rules at ${this.gitConfigPath}`);
 
@@ -374,7 +391,7 @@ export class FolderRuleManager {
     const after = currentConfig.substring(endIndex + GITAXIS_CONFIG_END.length).trimStart();
     const cleanedConfig = (before ? `${before}\n` : '') + (after ? `${after}\n` : '');
 
-    await fs.promises.writeFile(this.gitConfigPath, cleanedConfig, 'utf8');
+    await this.safeWriteGitConfig(this.gitConfigPath, cleanedConfig);
     logger.info(`Removed GitAxis config block from ${this.gitConfigPath}`);
 
     // Optionally clean profiles directory
@@ -392,5 +409,24 @@ export class FolderRuleManager {
     }
 
     return { removed: true, cleanedConfig };
+  }
+
+  private async safeWriteGitConfig(targetPath: string, content: string): Promise<void> {
+    await fs.promises.mkdir(path.dirname(targetPath), { recursive: true });
+    if (fs.existsSync(targetPath)) {
+      try {
+        await fs.promises.copyFile(targetPath, `${targetPath}.bak`);
+      } catch (backupErr) {
+        logger.warn(`Could not backup gitconfig to ${targetPath}.bak: ${String(backupErr)}`);
+      }
+    }
+    const tempPath = `${targetPath}.tmp.${Date.now()}`;
+    await fs.promises.writeFile(tempPath, content, 'utf8');
+    try {
+      await fs.promises.rename(tempPath, targetPath);
+    } catch {
+      await fs.promises.writeFile(targetPath, content, 'utf8');
+      try { await fs.promises.unlink(tempPath); } catch {}
+    }
   }
 }

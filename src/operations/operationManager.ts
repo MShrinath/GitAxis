@@ -191,15 +191,19 @@ export class OperationManager implements IOperationManager {
       // 2. Resolve Profile first (needed for safety context & mismatch checks)
       const repoPath = (operation.input as any)?.repositoryPath;
       let profile: GitProfile | undefined;
+      let resolutionSource: string | undefined;
       if (operation.profileId) {
         profile = await this.profileManager.getProfile(operation.profileId);
+        resolutionSource = 'binding';
       }
       if (!profile && repoPath) {
         const resolved = await this.profileManager.resolveProfileForRepository(repoPath);
         profile = resolved?.profile;
+        resolutionSource = resolved?.source;
       }
       if (!profile) {
         profile = await this.profileManager.getActiveProfile();
+        resolutionSource = 'fallback';
       }
 
       // 3. Commit Guard Check (Section 4)
@@ -208,53 +212,58 @@ export class OperationManager implements IOperationManager {
           try {
             const localEmail = await this.gitClient.getLocalConfig(repoPath, 'user.email');
             const localName = await this.gitClient.getLocalConfig(repoPath, 'user.name');
-            const effectiveEmail = localEmail || (await this.gitClient.getConfig(repoPath, 'user.email'));
-            const effectiveName = localName || (await this.gitClient.getConfig(repoPath, 'user.name'));
+            const hasLocalIdentity = Boolean(localEmail || localName);
+            const shouldCheckCommitGuard = resolutionSource !== 'fallback' || !hasLocalIdentity;
 
-            const emailMismatch =
-              effectiveEmail !== undefined &&
-              profile.git.email !== undefined &&
-              effectiveEmail.trim().toLowerCase() !== profile.git.email.trim().toLowerCase();
-            const nameMismatch =
-              effectiveName !== undefined &&
-              profile.git.name !== undefined &&
-              effectiveName.trim().toLowerCase() !== profile.git.name.trim().toLowerCase();
+            if (shouldCheckCommitGuard) {
+              const effectiveEmail = localEmail || (await this.gitClient.getConfig(repoPath, 'user.email'));
+              const effectiveName = localName || (await this.gitClient.getConfig(repoPath, 'user.name'));
 
-            if (emailMismatch || nameMismatch) {
-              if (this.guardMode === 'block') {
-                record.state = 'cancelled';
-                return this.createErrorResult(
-                  operation.id,
-                  'GUARD_BLOCKED',
-                  `Commit blocked by GitAxis guard: Repo config (email: "${effectiveEmail || 'unset'}", name: "${effectiveName || 'unset'}") does not match profile "${profile.name}" (email: "${profile.git.email}", name: "${profile.git.name}").`,
-                  `Commit blocked by GitAxis guard: Git author does not match profile "${profile.name}".`,
-                  startedAt,
-                  record
-                );
-              } else if (this.guardMode === 'warn') {
-                if (this.commitMismatchPrompt) {
-                  const decision = await this.commitMismatchPrompt(
-                    { email: effectiveEmail, name: effectiveName },
-                    profile
+              const emailMismatch =
+                effectiveEmail !== undefined &&
+                profile.git.email !== undefined &&
+                effectiveEmail.trim().toLowerCase() !== profile.git.email.trim().toLowerCase();
+              const nameMismatch =
+                effectiveName !== undefined &&
+                profile.git.name !== undefined &&
+                effectiveName.trim().toLowerCase() !== profile.git.name.trim().toLowerCase();
+
+              if (emailMismatch || nameMismatch) {
+                if (this.guardMode === 'block') {
+                  record.state = 'cancelled';
+                  return this.createErrorResult(
+                    operation.id,
+                    'GUARD_BLOCKED',
+                    `Commit blocked by GitAxis guard: Repo config (email: "${effectiveEmail || 'unset'}", name: "${effectiveName || 'unset'}") does not match profile "${profile.name}" (email: "${profile.git.email}", name: "${profile.git.name}").`,
+                    `Commit blocked by GitAxis guard: Git author does not match profile "${profile.name}".`,
+                    startedAt,
+                    record
                   );
-                  if (decision === 'cancel') {
-                    record.state = 'cancelled';
-                    return this.createErrorResult(
-                      operation.id,
-                      'OPERATION_CANCELLED',
-                      'User cancelled commit due to author mismatch',
-                      'Commit cancelled due to author mismatch',
-                      startedAt,
-                      record
+                } else if (this.guardMode === 'warn') {
+                  if (this.commitMismatchPrompt) {
+                    const decision = await this.commitMismatchPrompt(
+                      { email: effectiveEmail, name: effectiveName },
+                      profile
                     );
-                  } else if (decision === 'fix') {
-                    await this.profileManager.applyIdentityToRepository(profile, repoPath);
+                    if (decision === 'cancel') {
+                      record.state = 'cancelled';
+                      return this.createErrorResult(
+                        operation.id,
+                        'OPERATION_CANCELLED',
+                        'User cancelled commit due to author mismatch',
+                        'Commit cancelled due to author mismatch',
+                        startedAt,
+                        record
+                      );
+                    } else if (decision === 'fix') {
+                      await this.profileManager.applyIdentityToRepository(profile, repoPath);
+                    }
                   }
+                  warnings.push({
+                    code: 'COMMIT_AUTHOR_MISMATCH',
+                    message: `Repo identity (${effectiveName} <${effectiveEmail}>) differs from profile "${profile.name}" (${profile.git.name} <${profile.git.email}>).`,
+                  });
                 }
-                warnings.push({
-                  code: 'COMMIT_AUTHOR_MISMATCH',
-                  message: `Repo identity (${effectiveName} <${effectiveEmail}>) differs from profile "${profile.name}" (${profile.git.name} <${profile.git.email}>).`,
-                });
               }
             }
           } catch (err) {
@@ -273,13 +282,23 @@ export class OperationManager implements IOperationManager {
                   record
                 );
               }
+            } else if (this.guardMode === 'block') {
+              record.state = 'cancelled';
+              return this.createErrorResult(
+                operation.id,
+                'GUARD_CHECK_FAILED',
+                String(err),
+                'Commit guard safety check failed',
+                startedAt,
+                record
+              );
             }
           }
         }
       }
 
-      // 4. Remote / Push Guard Check (Section 4)
-      if (profile && (operation.target.kind === 'remote' || operation.type === 'git.push') && repoPath) {
+      // 4. Remote Push Guard Check (Section 4)
+      if (profile && operation.type === 'git.push' && repoPath) {
         if (this.guardMode !== 'off') {
           try {
             const remotes = await this.gitClient.getRemotes(repoPath);
@@ -361,6 +380,16 @@ export class OperationManager implements IOperationManager {
                   record
                 );
               }
+            } else if (this.guardMode === 'block') {
+              record.state = 'cancelled';
+              return this.createErrorResult(
+                operation.id,
+                'GUARD_CHECK_FAILED',
+                String(err),
+                'Push guard safety check failed',
+                startedAt,
+                record
+              );
             }
           }
         }
@@ -371,11 +400,11 @@ export class OperationManager implements IOperationManager {
       operation.safety = safetyAssessment.safety;
       operation.confirmation = safetyAssessment.confirmation;
 
-      // 4a. Check dirty working tree for checkout and restore
+      // 4a. Check dirty working tree for checkout and restore (ignoring untracked files)
       if ((operation.type === 'git.checkout' || operation.type === 'git.restore') && repoPath) {
         try {
           const status = await this.gitClient.status(repoPath);
-          const hasDirty = !status.clean || (status.modified > 0) || (status.staged > 0);
+          const hasDirty = (status.modified > 0) || (status.staged > 0) || (status.conflicted > 0);
           if (hasDirty) {
             safetyAssessment.confirmation = {
               required: true,
@@ -472,7 +501,8 @@ export class OperationManager implements IOperationManager {
 
       // 5. Setup Per-Operation Timeouts (Section 10)
       const isRemoteOperation = ['git.push', 'git.pull', 'git.fetch', 'git.clone'].includes(operation.type);
-      const operationTimeout = isRemoteOperation ? 120000 : 15000;
+      const isLongRunningLocal = ['git.commit', 'git.amend', 'git.rebase', 'git.merge', 'git.checkout'].includes(operation.type);
+      const operationTimeout = isRemoteOperation ? 120000 : (isLongRunningLocal ? 0 : 15000);
 
       // 6. Resolve Authentication (Runtime Only)
       let auth: ResolvedAuthentication | undefined;
@@ -535,6 +565,13 @@ export class OperationManager implements IOperationManager {
         errorCode = 'OPERATION_CANCELLED';
         record.state = 'cancelled';
         retryable = false;
+      } else if (
+        (err as any)?.code === 'ETIMEDOUT' ||
+        (err as any)?.killed ||
+        errorStr.toLowerCase().includes('timed out')
+      ) {
+        errorCode = 'TIMEOUT';
+        retryable = true;
       } else if (errorStr.includes('not a git repository')) {
         errorCode = 'NOT_A_REPOSITORY';
         retryable = false;
@@ -623,16 +660,36 @@ export class OperationManager implements IOperationManager {
     baseOptions: GitExecOptions = {}
   ): Promise<T> {
     const execOptions: GitExecOptions = { ...baseOptions };
-    if (auth?.credential) {
-      const username = auth.username || '';
-      const authString = username ? `${username}:${auth.credential}` : `:${auth.credential}`;
-      const base64Auth = Buffer.from(authString).toString('base64');
-      execOptions.env = {
-        ...(baseOptions.env || {}),
-        GIT_CONFIG_COUNT: '1',
-        GIT_CONFIG_KEY_0: 'http.extraheader',
-        GIT_CONFIG_VALUE_0: `AUTHORIZATION: basic ${base64Auth}`,
-      };
+    if (auth?.credential && auth.type === 'pat') {
+      const host = (auth.host || 'github.com').toLowerCase();
+      const targetUrl = input?.url || input?.fetchUrl || input?.pushUrl;
+      let shouldAttach = true;
+      if (targetUrl) {
+        try {
+          const parsed = new URL(targetUrl);
+          if (parsed.hostname.toLowerCase() !== host) {
+            shouldAttach = false;
+          }
+        } catch {
+          const hostMatch = String(targetUrl).match(/^(?:https?:\/\/|git@)([^/:]+)/i);
+          if (hostMatch && hostMatch[1].toLowerCase() !== host) {
+            shouldAttach = false;
+          }
+        }
+      }
+
+      if (shouldAttach) {
+        const username = auth.username || '';
+        const authString = username ? `${username}:${auth.credential}` : `:${auth.credential}`;
+        const base64Auth = Buffer.from(authString).toString('base64');
+        const headerKey = `http.https://${host}/.extraheader`;
+        execOptions.env = {
+          ...(baseOptions.env || {}),
+          GIT_CONFIG_COUNT: '1',
+          GIT_CONFIG_KEY_0: headerKey,
+          GIT_CONFIG_VALUE_0: `AUTHORIZATION: basic ${base64Auth}`,
+        };
+      }
     }
 
     const handler = this.gitHandlers[type];
@@ -745,7 +802,7 @@ export class OperationManager implements IOperationManager {
       'github.account.get': (_input, gh) => gh.getCurrentUser(),
       'github.repository.get': (input, gh) => gh.getRepository(input.owner, input.repository),
       'github.repository.list': (input, gh) => gh.listRepositories(input.owner),
-      'github.repository.create': (input, gh) => gh.createRepository(input.name, input.description, input.private),
+      'github.repository.create': (input, gh) => gh.createRepository(input.name, input.description, input.private, input.owner),
       'github.repository.delete': async (input, gh) => {
         await gh.deleteRepository(input.owner, input.repository);
         return true;

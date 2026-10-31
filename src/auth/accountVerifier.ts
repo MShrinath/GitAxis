@@ -188,6 +188,8 @@ export class AccountVerifier {
       '-i',
       normalizedKeyPath,
       '-o',
+      'BatchMode=yes',
+      '-o',
       'IdentitiesOnly=yes',
       '-o',
       'StrictHostKeyChecking=accept-new',

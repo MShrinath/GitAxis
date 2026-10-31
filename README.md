@@ -2,7 +2,7 @@
 
 [![GitHub Release](https://img.shields.io/github/v/release/MShrinath/GitAxis?logo=github&color=blue)](https://github.com/MShrinath/GitAxis/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
-[![Build & Tests](https://img.shields.io/badge/tests-93%20passing-brightgreen.svg)](https://github.com/MShrinath/GitAxis)
+[![Build & Tests](https://img.shields.io/badge/tests-97%20passing-brightgreen.svg)](https://github.com/MShrinath/GitAxis)
 [![VS Code](https://img.shields.io/badge/VS%20Code-1.85%2B-007acc.svg?logo=visualstudiocode)](https://code.visualstudio.com/)
 
 **GitAxis** is a dedicated identity and profile manager for Visual Studio Code and VS Code Insiders. 
@@ -53,7 +53,8 @@ When working across multiple GitHub accounts on the same computer:
 - **Automated Credential & Remote Alignment**:
   - Automatically targets Git Credential Manager (`credential.https://${host}.username`).
   - Rewrites repository HTTPS remotes to embed the active username (`https://username@github.com/owner/repo.git`), ensuring Git Credential Manager never defaults to the wrong cached user.
-- **Direct PAT Extraheader Injection**: Enter a Personal Access Token in GitAxis, and it automatically configures `http.extraheader` with HTTP Basic Authorization in the repository so VS Code Source Control pushes authenticate immediately with zero popups.
+- **Direct In-Memory PAT Injection**: Personal Access Tokens (PATs) are stored safely in VS Code's encrypted SecretStorage (never written as plaintext to disk). Operations run by GitAxis inject temporary scoped extraheaders (`http.https://<host>/.extraheader`) strictly in-memory per command.
+- **Native Push Credential Alignment**: For native VS Code Source Control pushes, GitAxis aligns `credential.https://${host}.username` and rewrites remote HTTPS URLs (`https://<user>@github.com/...`) so the OS Credential Manager automatically targets the matching profile identity.
 - **Persistent In-Sidebar Form**: Create and edit profiles directly in the webview sidebar. Form inputs are preserved even if you alt-tab to your browser to generate or copy credentials.
 - **1-Click Local Account Discovery**: Inspects existing `git config` and GitHub CLI (`gh auth status`) logins, displaying 1-click **[+ Import as Profile]** chips.
 - **Native VS Code Design (No Emojis)**: Pixel-aligned SVG icons, theme-adaptive CSS variables, and clean layout built strictly to match VS Code's design system.
@@ -71,9 +72,9 @@ When working across multiple GitHub accounts on the same computer:
          ┌───────────────────────┴───────────────────────┐
          ▼                                               ▼
 1. Git Identity Config                          2. Git Authentication Config
-   • git config user.name "John Doe"               • git config credential.username "john-work"
-   • git config user.email "john@work.com"         • Rewrite remote: https://john-work@github.com/...
-                                                   • Inject PAT extraheader (if PAT configured)
+   • git config user.name "Work User"               • git config credential.username "work-user"
+   • git config user.email "work@company.com"         • Rewrite remote: https://work-user@github.com/...
+                                                   • Target GCM: credential.https://github.com.username
                                                    • Configure core.sshCommand (if SSH configured)
                                  │
                                  ▼
@@ -82,8 +83,8 @@ When working across multiple GitHub accounts on the same computer:
                                  │
                                  ▼
                          GitHub Remote Server
-                    ✓ Authenticated as john-work
-                    ✓ Author stamped as John Doe
+                    ✓ Authenticated as work-user
+                    ✓ Author stamped as Work User
                     ✓ 0 Permission / 403 Errors
 ```
 
@@ -94,7 +95,7 @@ When working across multiple GitHub accounts on the same computer:
 ### Method 1: Install from GitHub Releases (Recommended)
 
 1. Go to the [GitAxis GitHub Releases Page](https://github.com/MShrinath/GitAxis/releases).
-2. Download the latest `.vsix` package (e.g. `gitaxis-0.7.0.vsix`).
+2. Download the latest `.vsix` package (e.g. `gitaxis-0.8.0.vsix`).
 3. Open **VS Code** or **VS Code Insiders**.
 4. Open the Extensions view (`Ctrl+Shift+X` or `Cmd+Shift+X`).
 5. Click the **`···`** (Views and More Actions) menu in the top right of the Extensions panel.
@@ -108,10 +109,10 @@ If you have VS Code in your system `PATH`:
 
 ```powershell
 # For standard VS Code:
-code --install-extension gitaxis-0.7.0.vsix
+code --install-extension gitaxis-0.8.0.vsix
 
 # For VS Code Insiders:
-code-insiders --install-extension gitaxis-0.7.0.vsix
+code-insiders --install-extension gitaxis-0.8.0.vsix
 ```
 
 ---
@@ -142,8 +143,11 @@ npm run build
 
 | Setting | Type | Default | Description |
 |---|---|---|---|
-| `gitaxis.guard.mode` | `string` (`"block"` \| `"warn"` \| `"off"`) | `"warn"` | Safety level for pre-commit author mismatch and pre-push organization mismatch guards. |
-| `gitaxis.github.showStatusBar` | `boolean` | `true` | Show or hide the active GitHub profile and mismatch warnings in the status bar. |
+| `gitaxis.guard.mode` | `string` (`"block"` | `"warn"` | `"off"`) | `"warn"` | Safety level for pre-commit author mismatch and pre-push organization mismatch guards. |
+| `gitaxis.confirmDestructiveOperations` | `boolean` | `true` | Require explicit confirmation for destructive Git operations (force push, rebase, checkout with dirty changes). |
+| `gitaxis.autoDetectProfile` | `boolean` | `true` | Automatically detect and prompt to switch profile based on repository remote and configuration. |
+| `gitaxis.promptScanOnFirstLaunch` | `boolean` | `true` | Prompt to scan system Git and GitHub CLI configurations on first launch. |
+| `gitaxis.advanced.allowGlobalScope` | `boolean` | `false` | Advanced: Show global Git identity scope option when creating profiles. Affects system-wide ~/.gitconfig. |
 
 ---
 
@@ -186,10 +190,13 @@ By default, GitAxis only modifies the local `.git/config` of the repository curr
 
 ---
 
+### How does GitAxis work in VS Code Remote, WSL, or Dev Containers?
+When using VS Code Remote (SSH, WSL, Dev Containers, or GitHub Codespaces), GitAxis runs as a workspace extension inside the remote environment. GitAxis transparently configures the remote system's `~/.gitconfig`, reads remote SSH keys (`~/.ssh/`), and integrates with GitHub CLI logins installed in the remote container or VM.
+
 ## Development & Testing
 
 ```bash
-# Run automated tests (67 unit tests)
+# Run automated tests (97 unit tests)
 npm test
 
 # Check TypeScript types

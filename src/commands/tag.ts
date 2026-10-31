@@ -1,6 +1,7 @@
 import * as crypto from 'crypto';
 import * as vscode from 'vscode';
 import { OperationManager } from '../operations/operationManager';
+import { GitClient } from '../git/gitClient';
 import { createOperation } from '../contracts';
 import { Validation } from '../utils/validation';
 import { TagInfo } from '../git/tag';
@@ -9,6 +10,7 @@ import { getWorkspaceRepoPath } from '../utils/workspace';
 export function registerTagCommands(
   context: vscode.ExtensionContext,
   operationManager: OperationManager,
+  gitClient: GitClient,
   onRefresh?: () => void
 ): void {
   context.subscriptions.push(
@@ -73,7 +75,6 @@ export function registerTagCommands(
         onRefresh?.();
       } else if (action.action === 'list') {
         try {
-          const gitClient = (operationManager as any).gitClient;
           const tags: TagInfo[] = await gitClient.getTags(repoPath);
           if (tags.length === 0) {
             vscode.window.showInformationMessage('No tags found in repository.');
@@ -88,7 +89,6 @@ export function registerTagCommands(
         }
       } else if (action.action === 'delete') {
         try {
-          const gitClient = (operationManager as any).gitClient;
           const tags: TagInfo[] = await gitClient.getTags(repoPath);
           if (tags.length === 0) {
             vscode.window.showInformationMessage('No tags to delete.');

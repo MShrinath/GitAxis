@@ -314,10 +314,18 @@ export function registerRepositoryCommands(
       const repoSubfolder = repoNameMatch ? repoNameMatch[1] : 'repository';
       const targetPath = `${destBase}/${repoSubfolder}`.replace(/\\/g, '/');
 
+      let cloneUrl = url.trim();
+      const selectedProfile = selectedProfileId ? await profileManager.getProfile(selectedProfileId) : undefined;
+      const ghUser = selectedProfile?.github?.username?.trim();
+      if (ghUser && cloneUrl.startsWith('https://') && !cloneUrl.includes('@')) {
+        cloneUrl = cloneUrl.replace(/^https:\/\//i, `https://${ghUser}@`);
+      }
+
       const op = createOperation({
         id: crypto.randomUUID(),
         type: 'git.clone',
-        input: { url: url.trim(), destinationPath: targetPath },
+        profileId: selectedProfileId,
+        input: { url: cloneUrl, destinationPath: targetPath },
         target: { kind: 'none' },
         safety: 'mutating',
         confirmation: { required: false },

@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.8.0] - 2026-10-31
+
+### Security
+- **Scoped In-Memory PAT Injections**: Injected runtime PAT headers are now URL-scoped to `http.https://${host}/.extraheader` and only attached when the target host matches the profile host.
+- **Removed `shell: true` from Windows Process Spawns**: Dropped shell execution in `GitHubClient` and `gh` execution to prevent command injection from remote URLs.
+- **Untrusted Workspaces Protection**: Declared `capabilities.untrustedWorkspaces.supported = false` to prevent automatic Git commands from running on malicious untrusted workspaces.
+- **Safe Webview Text Insertion**: Replaced `innerHTML` with `textContent` DOM nodes in the sidebar webview verification renderer.
+- **Precision Extraheader Migration**: Targeted only `AUTHORIZATION: basic` headers during security migration, preserving custom user and CI HTTP headers. Added per-repo migration tracking.
+
+### Fixed & Improved
+- **Clone Profile & Credential Alignment**: Cloned repositories now bind the selected profile explicitly and embed `username@` into clone URLs for proper Credential Manager routing. Added `--` argument separator to prevent option injection.
+- **Folder Rule Application Verification**: `promptUnboundRepo` now verifies that the `[includeIf]` block is actually configured in `.gitconfig` before skipping unbound prompts.
+- **Git includeIf Order**: Emits `[includeIf]` rules sorted by condition length ascending so Git's last-match-wins rule evaluates specific rules last.
+- **Atomic GitConfig Writes with Backup**: Creates `.gitconfig.bak` before writing and updates configuration via atomic temporary file renaming.
+- **Non-Interactive SSH Verification**: Added `-o BatchMode=yes` to SSH authentication tests to prevent indefinite hanging on passphrase prompts.
+- **Adaptive Timeouts & Error Classification**: Exempted long-running local operations (`commit`, `amend`, `rebase`, `merge`, `checkout`) from 15s timeouts, and classified timeouts as `TIMEOUT` error codes.
+- **Guard Precision & Fail-Closed Safety**: Restricted push guard specifically to push operations, prevented fallback profiles from triggering false commit mismatch warnings on local repos, and enforced strict fail-closed behavior on check errors.
+- **Checkout Dirty State Detection**: Ignored untracked files during checkout/restore safety checks.
+- **GitHub API 204 No Content Handling**: Properly handles empty 204 responses on repository deletion without throwing syntax errors.
+- **Editor Switch Refresh Debounce**: Debounced active editor switches (250ms) and eliminated redundant `git.refresh` storms.
+
+---
+
 ## [0.7.1] - 2026-10-31
 
 ### Fixed
