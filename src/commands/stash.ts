@@ -2,7 +2,7 @@ import * as crypto from 'crypto';
 import * as vscode from 'vscode';
 import { OperationManager } from '../operations/operationManager';
 import { createOperation } from '../contracts';
-import { getWorkspaceRepoPath } from '../utils/workspace';
+import { getActiveWorkspaceRepoPath } from '../utils/workspace';
 
 export function registerStashCommands(
   context: vscode.ExtensionContext,
@@ -11,7 +11,7 @@ export function registerStashCommands(
 ): void {
   context.subscriptions.push(
     vscode.commands.registerCommand('gitaxis.stash', async () => {
-      const repoPath = getWorkspaceRepoPath();
+      const repoPath = await getActiveWorkspaceRepoPath();
       if (!repoPath) return;
 
       const action = await vscode.window.showQuickPick(

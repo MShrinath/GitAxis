@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.11.0] - 2026-10-31
+
+### Security & Authentication
+- **Strict GitHub API Credential Guard**: `GitHubClient.request` requires an explicit authentication credential, preventing fallback to ambient `gh` CLI credentials under the wrong account. Credential Manager and SSH profiles cleanly instruct users to configure a PAT or GitHub CLI.
+- **Native SCM Push PAT Authentication**: Added `git credential approve` integration during identity application. When using a PAT profile with a secure credential helper (e.g. Git Credential Manager), the token is stored in the helper, enabling native VS Code Source Control pushes without plaintext config storage.
+- **GitHub CLI In-Memory Injection**: Scoped in-memory auth injection for `github-cli` profiles on push/pull/fetch operations, matching PAT profiles. Added short-lived token caching (15s) and cleanup.
+- **Robust Include-File Escaping**: Generated include-files properly escape backslashes, `#`, and `;` in author names, preserve quotes around `core.sshCommand` for paths with spaces on Windows, validate hostnames strictly, and delegate to `git config --file` for canonical escaping.
+
+### Improved & Fixed
+- **Three-State Account Verification**: Profile verification supports verified (green), failed (red), and neutral grey ("Configured, not verified"). Credential Manager and unauthenticated profiles are marked neutral on startup without triggering intrusive system credential popups or network calls. Manual verification remains available on-demand.
+- **Process Timeouts & Error Classification**: Extended error classification to preserve child process `killed`, `signal`, and `code`, classifying SIGTERM/killed processes as `TIMEOUT`. Network operations run without artificial timeouts (relying on cancellation), and long-running local operations (`git.switch`, `git.add`, `git.stash.*`, `git.reset`, `git.restore`) are protected from timeouts.
+- **Multi-Root Workspace Repo Selection**: Commands resolve the repository from the active editor first, falling back to a repository quick-pick prompt when multiple repos exist in multi-root workspaces.
+- **Commit Guard Safety**: Commit guard fails closed immediately in `block` mode when guard checks error without offering a proceed prompt.
+- **UI & Minor Polishing**: Operation history capped at 200 items; `GIT_CONFIG_COUNT` environment variable appends rather than overwrites; status bar tooltips enable theme icons; dynamic profile creation wizard numbering; descriptive action verb command titles.
+
+---
+
 ## [0.10.0] - 2026-10-31
 
 ### Added & Improved

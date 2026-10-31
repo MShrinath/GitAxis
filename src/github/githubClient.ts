@@ -90,12 +90,19 @@ export class GitHubClient {
       }
     }
 
-    // If no credential was provided and no username specified, fail rather than running as wrong default account
-    if (!this.auth?.credential && !this.auth?.username) {
+    // Strict credential guard: If no credential is available, fail closed rather than running gh as default account
+    if (!this.auth?.credential) {
+      if (this.auth?.type === 'github-cli') {
+        const user = this.auth.username || 'User';
+        throw new Error(`${user} is not logged in to gh on ${this.host}. Run 'gh auth login' or configure a Personal Access Token.`);
+      }
+      if (this.auth?.type === 'credential-manager' || this.auth?.type === 'ssh' || this.auth?.type === 'none') {
+        throw new Error(`This profile has no API token. Add a PAT or use GitHub CLI to access GitHub API.`);
+      }
       throw new Error(`Authentication required for GitHub API ${endpoint}: No token or credentials available.`);
     }
 
-    // Fallback to gh api if gh is installed
+    // Fallback to gh api if direct fetch failed due to network error and gh is installed
     try {
       const ghArgs = ['api', endpoint, '-X', method];
       if (this.host !== 'github.com') {
@@ -173,7 +180,9 @@ export class GitHubClient {
   }
 
   public async createRepository(name: string, description?: string, isPrivate: boolean = false, owner?: string): Promise<GitHubRepoSummary> {
-    const endpoint = owner ? `/orgs/${owner}/repos` : '/user/repos';
+    const authUser = this.auth?.username?.trim().toLowerCase();
+    const isOwnerSelf = !owner || (Boolean(authUser) && owner.trim().toLowerCase() === authUser);
+    const endpoint = isOwnerSelf ? '/user/repos' : `/orgs/${owner.trim()}/repos`;
     const r = await this.request<any>(endpoint, 'POST', {
       name,
       description,

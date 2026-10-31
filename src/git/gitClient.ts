@@ -18,6 +18,28 @@ export interface GitExecOptions {
   signal?: AbortSignal;
 }
 
+export class GitProcessError extends Error {
+  public readonly code?: number | string;
+  public readonly killed?: boolean;
+  public readonly signal?: string;
+  public readonly stdout: string;
+  public readonly stderr: string;
+
+  constructor(
+    message: string,
+    details: { code?: number | string; killed?: boolean; signal?: string; stdout?: string; stderr?: string } = {}
+  ) {
+    super(message);
+    this.name = 'GitProcessError';
+    this.code = details.code;
+    this.killed = details.killed;
+    this.signal = details.signal;
+    this.stdout = details.stdout || '';
+    this.stderr = details.stderr || '';
+    Object.setPrototypeOf(this, GitProcessError.prototype);
+  }
+}
+
 export class GitClient {
   constructor(private gitPath: string = 'git') {}
 
@@ -39,15 +61,92 @@ export class GitClient {
       if (options.signal?.aborted || (err as { name?: string })?.name === 'AbortError') {
         throw new Error('Git operation was cancelled by user');
       }
-      const error = err as { stdout?: string; stderr?: string; message?: string; code?: number };
+      const error = err as { stdout?: string; stderr?: string; message?: string; code?: number | string; killed?: boolean; signal?: string };
       const stdout = error.stdout?.trim() || '';
       const stderr = error.stderr?.trim() || error.message || '';
       const sanitizedCmd = Validation.sanitizeUrl(`${this.gitPath} ${args.join(' ')}`);
       const sanitizedStderr = Validation.sanitizeUrl(stderr);
       const sanitizedStdout = Validation.sanitizeUrl(stdout);
       logger.error(`Git command failed: ${sanitizedCmd}: ${sanitizedStderr}`);
-      throw new Error(sanitizedStderr || sanitizedStdout || `Git process exited with code ${error.code}`);
+      const message = sanitizedStderr || sanitizedStdout || `Git process exited with code ${error.code}`;
+      throw new GitProcessError(message, {
+        code: error.code,
+        killed: error.killed,
+        signal: error.signal,
+        stdout: sanitizedStdout,
+        stderr: sanitizedStderr,
+      });
     }
+  }
+
+  public async execWithStdin(
+    args: string[],
+    input: string,
+    options: GitExecOptions = {}
+  ): Promise<{ stdout: string; stderr: string }> {
+    return new Promise((resolve, reject) => {
+      const child = execFile(
+        this.gitPath,
+        args,
+        {
+          cwd: options.cwd,
+          timeout: options.timeout ?? 10000,
+          signal: options.signal,
+          env: {
+            ...process.env,
+            ...(options.env || {}),
+            LANG: 'C',
+            LC_ALL: 'C',
+          },
+        },
+        (err, stdout, stderr) => {
+          if (err) {
+            const e = err as any;
+            const message = stderr?.trim() || stdout?.trim() || e.message;
+            return reject(
+              new GitProcessError(Validation.sanitizeUrl(message), {
+                code: e.code,
+                killed: e.killed,
+                signal: e.signal,
+                stdout: stdout?.trim(),
+                stderr: stderr?.trim(),
+              })
+            );
+          }
+          resolve({ stdout: stdout?.trim() || '', stderr: stderr?.trim() || '' });
+        }
+      );
+
+      if (child.stdin) {
+        child.stdin.write(input);
+        child.stdin.end();
+      }
+    });
+  }
+
+  public async getCredentialHelper(cwd?: string): Promise<string> {
+    try {
+      const { stdout } = await this.exec(['config', '--get', 'credential.helper'], { cwd });
+      return stdout.trim();
+    } catch {
+      return '';
+    }
+  }
+
+  public async approveCredential(
+    params: { protocol: string; host: string; username: string; password: string },
+    options: GitExecOptions = {}
+  ): Promise<void> {
+    const input = `protocol=${params.protocol}\nhost=${params.host}\nusername=${params.username}\npassword=${params.password}\n\n`;
+    await this.execWithStdin(['credential', 'approve'], input, options);
+  }
+
+  public async rejectCredential(
+    params: { protocol: string; host: string; username: string },
+    options: GitExecOptions = {}
+  ): Promise<void> {
+    const input = `protocol=${params.protocol}\nhost=${params.host}\nusername=${params.username}\n\n`;
+    await this.execWithStdin(['credential', 'reject'], input, options);
   }
 
 

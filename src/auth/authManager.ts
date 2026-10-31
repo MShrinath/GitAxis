@@ -105,4 +105,8 @@ export class AuthManager {
   public async clearAuthForProfile(profileId: string): Promise<void> {
     await this.secretStore.deleteAllForProfile(profileId);
   }
+
+  public clearRuntimeCredentials(): void {
+    this.ghCliAuth.clearTokenCache();
+  }
 }

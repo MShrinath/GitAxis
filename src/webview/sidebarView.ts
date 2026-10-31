@@ -35,7 +35,7 @@ export class SidebarViewProvider implements vscode.WebviewViewProvider {
   private view?: vscode.WebviewView;
   private discoveredAccounts: DiscoveredAccount[] = [];
   private scanPerformed: boolean = false;
-  private profileStatuses: Record<string, { verified: boolean; message?: string }> = {};
+  private profileStatuses: Record<string, { verified: boolean; status?: 'verified' | 'failed' | 'not-verified'; message?: string }> = {};
 
   constructor(
     private readonly extensionUri: vscode.Uri,
@@ -227,6 +227,7 @@ export class SidebarViewProvider implements vscode.WebviewViewProvider {
             }
 
             const updated = await this.profileManager.updateProfile(data.id, input, patVal || undefined);
+            this.accountVerifier?.clearCache(data.id);
             const active = await this.profileManager.getActiveProfile();
             if (active?.id === updated.id) {
               const activeUri = vscode.window.activeTextEditor?.document.uri;
@@ -264,6 +265,7 @@ export class SidebarViewProvider implements vscode.WebviewViewProvider {
             );
             if (confirm === 'Delete') {
               await this.profileManager.deleteProfile(message.profileId);
+              this.accountVerifier?.clearCache(message.profileId);
               delete this.profileStatuses[message.profileId];
               this.view?.webview.postMessage({ command: 'profileDeleted', profileId: message.profileId });
               vscode.window.showInformationMessage(`Profile "${profileName}" deleted.`);
@@ -466,7 +468,7 @@ export class SidebarViewProvider implements vscode.WebviewViewProvider {
                 const repo = await this.repoDiscovery.detectRepository(workspaceFolder);
                 repoPath = repo?.path;
               }
-              const res = await this.accountVerifier.verifyProfile(profile, repoPath);
+              const res = await this.accountVerifier.verifyProfile(profile, repoPath, { force: true, onDemand: true });
               this.view?.webview.postMessage({
                 command: 'verificationResult',
                 profileId: message.profileId,
@@ -555,12 +557,26 @@ export class SidebarViewProvider implements vscode.WebviewViewProvider {
     if (!this.accountVerifier || profiles.length === 0) return;
     let changed = false;
     for (const p of profiles) {
+      if (p.authentication.type === 'credential-manager' || p.authentication.type === 'none') {
+        const prev = this.profileStatuses[p.id];
+        if (!prev || prev.status !== 'not-verified') {
+          this.profileStatuses[p.id] = {
+            verified: false,
+            status: 'not-verified',
+            message: 'Configured, not verified',
+          };
+          changed = true;
+        }
+        continue;
+      }
+
       try {
         const res = await this.accountVerifier.verifyProfile(p, repoPath);
         const prev = this.profileStatuses[p.id];
-        if (!prev || prev.verified !== res.success || prev.message !== res.message) {
+        if (!prev || prev.status !== res.status || prev.verified !== res.success || prev.message !== res.message) {
           this.profileStatuses[p.id] = {
             verified: res.success,
+            status: res.status || (res.success ? 'verified' : 'failed'),
             message: res.message,
           };
           changed = true;
@@ -568,9 +584,10 @@ export class SidebarViewProvider implements vscode.WebviewViewProvider {
       } catch (err) {
         const errMsg = err instanceof Error ? err.message : String(err);
         const prev = this.profileStatuses[p.id];
-        if (!prev || prev.verified !== false || prev.message !== errMsg) {
+        if (!prev || prev.status !== 'failed' || prev.verified !== false || prev.message !== errMsg) {
           this.profileStatuses[p.id] = {
             verified: false,
+            status: 'failed',
             message: errMsg,
           };
           changed = true;

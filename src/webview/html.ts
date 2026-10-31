@@ -24,7 +24,7 @@ export interface WebviewState {
   repository?: GitRepository;
   matchResult?: ProfileMatchResult;
   profiles: GitProfile[];
-  profileStatuses?: Record<string, { verified: boolean; message?: string }>;
+  profileStatuses?: Record<string, { verified: boolean; status?: 'verified' | 'failed' | 'not-verified'; message?: string }>;
   repoUrl?: string;
   linkedProfileId?: string;
   discoveredAccounts?: DiscoveredAccount[];
@@ -163,7 +163,7 @@ export class HtmlBuilder {
       <div class="card-header-row">
         <div class="card-title-group">
           <span class="status-dot ${profile ? 'dot-active' : 'dot-inactive'}"></span>
-          <span>${repo && profile ? `Active for this repo: <strong class="profile-title-name ${profile && state.profileStatuses?.[profile.id]?.verified === true ? 'status-verified' : profile && state.profileStatuses?.[profile.id]?.verified === false ? 'status-unverified' : ''}">${profileName}</strong> (${profileUser})` : `<span class="profile-title-name ${profile && state.profileStatuses?.[profile.id]?.verified === true ? 'status-verified' : profile && state.profileStatuses?.[profile.id]?.verified === false ? 'status-unverified' : ''}">${profileName}</span>`}</span>
+          <span>${repo && profile ? `Active for this repo: <strong class="profile-title-name ${profile && (state.profileStatuses?.[profile.id]?.status === 'verified' || (!state.profileStatuses?.[profile.id]?.status && state.profileStatuses?.[profile.id]?.verified === true)) ? 'status-verified' : profile && state.profileStatuses?.[profile.id]?.status === 'not-verified' ? 'status-neutral' : profile && (state.profileStatuses?.[profile.id]?.status === 'failed' || state.profileStatuses?.[profile.id]?.verified === false) ? 'status-unverified' : ''}">${profileName}</strong> (${profileUser})` : `<span class="profile-title-name ${profile && (state.profileStatuses?.[profile.id]?.status === 'verified' || (!state.profileStatuses?.[profile.id]?.status && state.profileStatuses?.[profile.id]?.verified === true)) ? 'status-verified' : profile && state.profileStatuses?.[profile.id]?.status === 'not-verified' ? 'status-neutral' : profile && (state.profileStatuses?.[profile.id]?.status === 'failed' || state.profileStatuses?.[profile.id]?.verified === false) ? 'status-unverified' : ''}">${profileName}</span>`}</span>
         </div>
         <div>
           ${profile ? `<span class="badge ${isWork ? 'badge-info' : 'badge-success'}">${isWork ? 'Work' : isPersonal ? 'Personal' : 'Active'}</span>` : ''}
@@ -264,8 +264,10 @@ export class HtmlBuilder {
               const isActive = profile?.id === p.id;
               const authText = p.authentication.type === 'pat' ? 'PAT (token saved)' : p.authentication.type;
               const pStatus = state.profileStatuses ? state.profileStatuses[p.id] : undefined;
-              const pStatusClass = pStatus ? (pStatus.verified ? 'status-verified' : 'status-unverified') : '';
-              const pStatusTitle = pStatus ? (pStatus.verified ? `Verified: ${pStatus.message || 'Valid'}` : `Verification warning: ${pStatus.message || 'Check credentials'}`) : 'Verifying credentials...';
+              const isVerified = pStatus ? (pStatus.status === 'verified' || (!pStatus.status && pStatus.verified)) : false;
+              const isNeutral = pStatus ? pStatus.status === 'not-verified' : false;
+              const pStatusClass = pStatus ? (isVerified ? 'status-verified' : isNeutral ? 'status-neutral' : 'status-unverified') : '';
+              const pStatusTitle = pStatus ? (isVerified ? `Verified: ${pStatus.message || 'Valid'}` : isNeutral ? `Status: ${pStatus.message || 'Configured, not verified'}` : `Verification warning: ${pStatus.message || 'Check credentials'}`) : 'Verifying credentials...';
               return `
       <div class="card ${isActive ? 'card-active-identity' : ''}">
         <div class="card-header-row">

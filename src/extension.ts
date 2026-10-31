@@ -124,7 +124,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // 3. Status Bar Item (Section 2)
   statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
   statusBarItem.command = 'gitaxis.switchProfile';
-  statusBarItem.tooltip = 'Click to switch or bind GitAxis Profile';
+  statusBarItem.tooltip = 'Click to switch GitAxis Profile';
   context.subscriptions.push(statusBarItem);
 
   const updateStatusBar = async () => {
@@ -144,7 +144,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }
 
     let active: any | undefined;
-    let isBound = false;
     let folderRule: string | undefined;
     if (repo) {
       const resolved = await profileManager.resolveProfileForRepository(repo.path, {
@@ -152,7 +151,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         localGitEmail: repoEmail,
       });
       active = resolved?.profile;
-      isBound = Boolean(resolved?.isBound);
       folderRule = resolved?.source === 'folder-rule' ? resolved.folderRule : undefined;
     } else {
       active = await profileManager.getActiveProfile();
@@ -172,24 +170,27 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         statusBarItem.text = branchName
           ? `$(warning) ${profileIcon} ${active.name} $(git-branch) ${branchName}`
           : `$(warning) ${profileIcon} ${active.name}`;
-        statusBarItem.tooltip = new vscode.MarkdownString(
+        const warningTooltip = new vscode.MarkdownString(
           `$(warning) **GitAxis Profile Mismatch**\n\n` +
           `- **Resolved Profile:** ${active.name} (${active.git.email})\n` +
           `${folderRule ? `- **Folder Rule:** \`${folderRule}\`\n` : ''}` +
           `- **Repo git config \`user.email\`:** ${repoEmail}\n\n` +
           `*Click to switch profile or fix git identity.*`
         );
+        warningTooltip.supportThemeIcons = true;
+        statusBarItem.tooltip = warningTooltip;
         statusBarItem.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
       } else {
         statusBarItem.text = branchName
           ? `${profileIcon} ${active.name} $(git-branch) ${branchName}`
           : `${profileIcon} ${active.name}`;
-        statusBarItem.tooltip = new vscode.MarkdownString(
+        const normalTooltip = new vscode.MarkdownString(
           `${profileIcon} **GitAxis Profile:** ${active.name} (${active.git.email})\n\n` +
-          `${isBound ? '*(Bound to this repo)*\n\n' : ''}` +
           `${folderRule ? `*(Matched rule: \`${folderRule}\`)*\n\n` : ''}` +
           `*Click to switch or manage.*`
         );
+        normalTooltip.supportThemeIcons = true;
+        statusBarItem.tooltip = normalTooltip;
         statusBarItem.backgroundColor = undefined;
       }
       statusBarItem.show();
@@ -294,15 +295,23 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
           chooseAnotherBtn
         )
         .then(async choice => {
-          if (choice === alwaysBtn) {
-            await profileManager.switchProfile(candidate.id, repo.path);
-            await profileManager.associateRepository(repo.path, candidate.id);
-            await refreshAll();
-          } else if (choice === justOnceBtn) {
-            await profileManager.applyIdentityToRepository(candidate, repo.path);
-            await refreshAll();
-          } else if (choice === chooseAnotherBtn) {
-            await vscode.commands.executeCommand('gitaxis.switchProfile');
+          try {
+            if (choice === alwaysBtn) {
+              await profileManager.switchProfile(candidate.id, repo.path);
+              await profileManager.associateRepository(repo.path, candidate.id);
+              await refreshAll();
+            } else if (choice === justOnceBtn) {
+              await profileManager.applyIdentityToRepository(candidate, repo.path);
+              await refreshAll();
+            } else if (choice === chooseAnotherBtn) {
+              await vscode.commands.executeCommand('gitaxis.switchProfile');
+            }
+          } catch (err: any) {
+            if (err?.message?.includes('cancelled')) {
+              logger.info(`Profile switch on unbound repo prompt was cancelled: ${err.message}`);
+              return;
+            }
+            logger.warn(`Error during promptUnboundRepo action: ${String(err)}`);
           }
         });
     }

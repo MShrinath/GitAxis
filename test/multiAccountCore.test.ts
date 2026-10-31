@@ -443,14 +443,11 @@ describe('Multi-Account Core (v0.5.0)', () => {
       assert.ok(deniedRes.message.includes('Permission denied (publickey)'));
     });
 
-    it('AccountVerifier: should verify HTTPS remote authentication using git ls-remote', async () => {
-      let lsRemoteCalledWith: string[] = [];
-      mockGitClient.exec = async (args: string[]) => {
-        lsRemoteCalledWith = args;
-        if (args[0] === 'ls-remote' && args[1] === '--heads') {
-          return { stdout: 'd41d8cd98f00b204e9800998ecf8427e refs/heads/main\n', stderr: '' };
-        }
-        return { stdout: '', stderr: '' };
+    it('AccountVerifier: should return not-verified by default for credential-manager and support onDemand verification', async () => {
+      let execWithStdinCalledWith: string[] = [];
+      mockGitClient.execWithStdin = async (args: string[]) => {
+        execWithStdinCalledWith = args;
+        return { stdout: 'protocol=https\nhost=github.com\nusername=httpsuser\npassword=fake-token\n', stderr: '' };
       };
 
       const profile = await profileManager.createProfile({
@@ -465,11 +462,32 @@ describe('Multi-Account Core (v0.5.0)', () => {
       ]);
 
       const verifier = new AccountVerifier(secretStore, mockGitClient);
-      const res = await verifier.verifyProfile(profile, 'C:/repos/https-repo');
-      assert.strictEqual(res.success, true);
-      assert.strictEqual(lsRemoteCalledWith[0], 'ls-remote');
-      assert.strictEqual(lsRemoteCalledWith[1], '--heads');
-      assert.ok(res.message.includes('Git remote authenticated successfully'));
+
+      // Default / startup verification: neutral without running commands
+      const resDefault = await verifier.verifyProfile(profile, 'C:/repos/https-repo');
+      assert.strictEqual(resDefault.success, true);
+      assert.strictEqual(resDefault.status, 'not-verified');
+      assert.strictEqual(resDefault.message, 'Configured, not verified');
+      assert.strictEqual(execWithStdinCalledWith.length, 0);
+
+      // On-demand verification: calls credential fill
+      const originalFetch = globalThis.fetch;
+      try {
+        globalThis.fetch = async () =>
+          new Response(JSON.stringify({ login: 'httpsuser', id: 123 }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          });
+
+        const resOnDemand = await verifier.verifyProfile(profile, 'C:/repos/https-repo', { force: true, onDemand: true });
+        assert.strictEqual(resOnDemand.success, true);
+        assert.strictEqual(resOnDemand.status, 'verified');
+        assert.strictEqual(execWithStdinCalledWith[0], 'credential');
+        assert.strictEqual(execWithStdinCalledWith[1], 'fill');
+        assert.ok(resOnDemand.message.includes('Verified @httpsuser via credential helper'));
+      } finally {
+        globalThis.fetch = originalFetch;
+      }
     });
 
     it('ProfileMatcher: should match remote owner against allowed orgs and wildcards', async () => {

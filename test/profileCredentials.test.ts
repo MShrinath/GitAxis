@@ -164,34 +164,34 @@ describe('Profile Credentials & Remote Synchronization', () => {
     remotesMap.set(repoPath, [
       {
         name: 'origin',
-        fetchUrl: 'https://MShrinath@github.com/mshrnth/my-project.git',
-        pushUrl: 'https://MShrinath@github.com/mshrnth/my-project.git',
+        fetchUrl: 'https://old-user@github.com/target-org/my-project.git',
+        pushUrl: 'https://old-user@github.com/target-org/my-project.git',
         host: 'github.com',
-        owner: 'mshrnth',
+        owner: 'target-org',
         repository: 'my-project',
       },
       {
         name: 'ssh-remote',
-        fetchUrl: 'git@github.com:mshrnth/my-project.git',
-        pushUrl: 'git@github.com:mshrnth/my-project.git',
+        fetchUrl: 'git@github.com:target-org/my-project.git',
+        pushUrl: 'git@github.com:target-org/my-project.git',
         host: 'github.com',
-        owner: 'mshrnth',
+        owner: 'target-org',
         repository: 'my-project',
       },
       {
         name: 'gitlab',
-        fetchUrl: 'https://gitlab.com/mshrnth/my-project.git',
-        pushUrl: 'https://gitlab.com/mshrnth/my-project.git',
+        fetchUrl: 'https://gitlab.com/target-org/my-project.git',
+        pushUrl: 'https://gitlab.com/target-org/my-project.git',
         host: 'gitlab.com',
-        owner: 'mshrnth',
+        owner: 'target-org',
         repository: 'my-project',
       },
     ]);
 
     const activeProfile = await profileManager.createProfile({
       name: 'target-profile',
-      git: { name: 'Shrinath M', email: 'shrinath@test.com' },
-      github: { host: 'github.com', username: 'mshrnth' },
+      git: { name: 'Target User', email: 'target@example.com' },
+      github: { host: 'github.com', username: 'target-user' },
       authentication: { type: 'none' },
     });
 
@@ -200,7 +200,7 @@ describe('Profile Credentials & Remote Synchronization', () => {
     // Check setRemoteCalls
     assert.strictEqual(setRemoteCalls.length, 1);
     assert.strictEqual(setRemoteCalls[0].name, 'origin');
-    assert.strictEqual(setRemoteCalls[0].url, 'https://mshrnth@github.com/mshrnth/my-project.git');
+    assert.strictEqual(setRemoteCalls[0].url, 'https://target-user@github.com/target-org/my-project.git');
 
     // SSH and GitLab remotes must not be touched
     const touchedNames = setRemoteCalls.map(c => c.name);

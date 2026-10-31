@@ -83,5 +83,15 @@ export class Validation {
       .replace(/(password[:=]\s*)[^\s,]+/gi, '$1***[REDACTED]')
       .replace(/(token[:=]\s*)[^\s,]+/gi, '$1***[REDACTED]');
   }
+
+  public static isValidHost(host: string): boolean {
+    if (!host || typeof host !== 'string') return false;
+    const clean = host.replace(/^https?:\/\//i, '').replace(/\/+$/, '').trim();
+    if (!clean) return false;
+    // Disallow dangerous characters for git config section names and CLI flags
+    if (/[\s"';#\\]/.test(clean)) return false;
+    // Standard hostname pattern with optional port
+    return /^[a-zA-Z0-9]([a-zA-Z0-9\-_]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9\-_]*[a-zA-Z0-9])?)*(:\d+)?$/.test(clean);
+  }
 }
 

@@ -157,6 +157,9 @@ export class OperationManager implements IOperationManager {
       state: 'validating',
     };
     this.history.unshift(record);
+    if (this.history.length > 200) {
+      this.history.length = 200;
+    }
 
     const abortController = new AbortController();
     this.activeControllers.set(operation.id, abortController);
@@ -269,7 +272,17 @@ export class OperationManager implements IOperationManager {
           } catch (err) {
             // Fail closed: do not swallow error silently
             logger.error(`Commit guard check failed: ${String(err)}`);
-            if (this.guardCheckFailedPrompt) {
+            if (this.guardMode === 'block') {
+              record.state = 'cancelled';
+              return this.createErrorResult(
+                operation.id,
+                'GUARD_CHECK_FAILED',
+                String(err),
+                'Commit guard safety check failed',
+                startedAt,
+                record
+              );
+            } else if (this.guardCheckFailedPrompt) {
               const proceed = await this.guardCheckFailedPrompt(`Commit guard check failed: ${String(err)}`);
               if (!proceed) {
                 record.state = 'cancelled';
@@ -282,16 +295,6 @@ export class OperationManager implements IOperationManager {
                   record
                 );
               }
-            } else if (this.guardMode === 'block') {
-              record.state = 'cancelled';
-              return this.createErrorResult(
-                operation.id,
-                'GUARD_CHECK_FAILED',
-                String(err),
-                'Commit guard safety check failed',
-                startedAt,
-                record
-              );
             }
           }
         }
@@ -367,7 +370,17 @@ export class OperationManager implements IOperationManager {
           } catch (err) {
             // Fail closed: do not swallow error silently
             logger.error(`Push guard check failed: ${String(err)}`);
-            if (this.guardCheckFailedPrompt) {
+            if (this.guardMode === 'block') {
+              record.state = 'cancelled';
+              return this.createErrorResult(
+                operation.id,
+                'GUARD_CHECK_FAILED',
+                String(err),
+                'Push guard safety check failed',
+                startedAt,
+                record
+              );
+            } else if (this.guardCheckFailedPrompt) {
               const proceed = await this.guardCheckFailedPrompt(`Push guard check failed: ${String(err)}`);
               if (!proceed) {
                 record.state = 'cancelled';
@@ -380,16 +393,6 @@ export class OperationManager implements IOperationManager {
                   record
                 );
               }
-            } else if (this.guardMode === 'block') {
-              record.state = 'cancelled';
-              return this.createErrorResult(
-                operation.id,
-                'GUARD_CHECK_FAILED',
-                String(err),
-                'Push guard safety check failed',
-                startedAt,
-                record
-              );
             }
           }
         }
@@ -501,12 +504,28 @@ export class OperationManager implements IOperationManager {
 
       // 5. Setup Per-Operation Timeouts (Section 10)
       const isRemoteOperation = ['git.push', 'git.pull', 'git.fetch', 'git.clone'].includes(operation.type);
-      const isLongRunningLocal = ['git.commit', 'git.amend', 'git.rebase', 'git.merge', 'git.checkout'].includes(operation.type);
-      const operationTimeout = isRemoteOperation ? 120000 : (isLongRunningLocal ? 0 : 15000);
+      const isLongRunningLocal = [
+        'git.commit',
+        'git.amend',
+        'git.rebase',
+        'git.merge',
+        'git.checkout',
+        'git.switch',
+        'git.add',
+        'git.stash.create',
+        'git.stash.pop',
+        'git.stash.apply',
+        'git.stash.drop',
+        'git.reset',
+        'git.restore',
+      ].includes(operation.type);
+      // For network remote operations, timeout is 0 (none) so large clones/pushes aren't killed, relying on Cancel button
+      const operationTimeout = isRemoteOperation ? 0 : (isLongRunningLocal ? 0 : 15000);
 
-      // 6. Resolve Authentication (Runtime Only)
+      // 6. Resolve Authentication (Runtime Only) - only when needed (network git ops or github.*)
       let auth: ResolvedAuthentication | undefined;
-      if (profile) {
+      const needsAuth = isRemoteOperation || operation.type.startsWith('github.');
+      if (needsAuth && profile) {
         const authManager = this.profileManager.getAuthManager();
         if (authManager) {
           auth = await authManager.resolveAuthentication(profile);
@@ -524,6 +543,10 @@ export class OperationManager implements IOperationManager {
       // Clean up runtime credentials
       if (auth) {
         auth.credential = undefined;
+      }
+      const authManager = this.profileManager.getAuthManager();
+      if (authManager) {
+        authManager.clearRuntimeCredentials();
       }
 
       if (abortController.signal.aborted) {
@@ -568,6 +591,7 @@ export class OperationManager implements IOperationManager {
       } else if (
         (err as any)?.code === 'ETIMEDOUT' ||
         (err as any)?.killed ||
+        (err as any)?.signal === 'SIGTERM' ||
         errorStr.toLowerCase().includes('timed out')
       ) {
         errorCode = 'TIMEOUT';
@@ -660,7 +684,7 @@ export class OperationManager implements IOperationManager {
     baseOptions: GitExecOptions = {}
   ): Promise<T> {
     const execOptions: GitExecOptions = { ...baseOptions };
-    if (auth?.credential && auth.type === 'pat') {
+    if (auth?.credential && (auth.type === 'pat' || auth.type === 'github-cli')) {
       const host = (auth.host || 'github.com').toLowerCase();
       const targetUrl = input?.url || input?.fetchUrl || input?.pushUrl;
       let shouldAttach = true;
@@ -683,12 +707,17 @@ export class OperationManager implements IOperationManager {
         const authString = username ? `${username}:${auth.credential}` : `:${auth.credential}`;
         const base64Auth = Buffer.from(authString).toString('base64');
         const headerKey = `http.https://${host}/.extraheader`;
-        execOptions.env = {
-          ...(baseOptions.env || {}),
-          GIT_CONFIG_COUNT: '1',
-          GIT_CONFIG_KEY_0: headerKey,
-          GIT_CONFIG_VALUE_0: `AUTHORIZATION: basic ${base64Auth}`,
-        };
+
+        const env = { ...(baseOptions.env || {}) };
+        const rawExistingCount = env.GIT_CONFIG_COUNT ?? process.env.GIT_CONFIG_COUNT;
+        const existingCount = rawExistingCount ? parseInt(rawExistingCount, 10) : 0;
+        const index = isNaN(existingCount) ? 0 : existingCount;
+        const newCount = index + 1;
+
+        env.GIT_CONFIG_COUNT = String(newCount);
+        env[`GIT_CONFIG_KEY_${index}`] = headerKey;
+        env[`GIT_CONFIG_VALUE_${index}`] = `AUTHORIZATION: basic ${base64Auth}`;
+        execOptions.env = env;
       }
     }
 

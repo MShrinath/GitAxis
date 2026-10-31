@@ -3,7 +3,7 @@ import * as vscode from 'vscode';
 import { OperationManager } from '../operations/operationManager';
 import { RepositoryDiscovery } from '../discovery/repositoryDiscovery';
 import { createOperation } from '../contracts';
-import { getWorkspaceRepoPath } from '../utils/workspace';
+import { getActiveWorkspaceRepoPath } from '../utils/workspace';
 
 export function registerGitHubCommands(
   context: vscode.ExtensionContext,
@@ -13,7 +13,7 @@ export function registerGitHubCommands(
   // Open GitHub Repository in browser
   context.subscriptions.push(
     vscode.commands.registerCommand('gitaxis.openGitHubRepo', async () => {
-      const repoPath = getWorkspaceRepoPath();
+      const repoPath = await getActiveWorkspaceRepoPath();
       if (!repoPath) return;
 
       const repo = await repoDiscovery.detectRepository(repoPath);
@@ -33,7 +33,7 @@ export function registerGitHubCommands(
   // Create GitHub Issue
   context.subscriptions.push(
     vscode.commands.registerCommand('gitaxis.createIssue', async () => {
-      const repoPath = getWorkspaceRepoPath();
+      const repoPath = await getActiveWorkspaceRepoPath();
       if (!repoPath) return;
 
       const repo = await repoDiscovery.detectRepository(repoPath);
@@ -102,7 +102,7 @@ export function registerGitHubCommands(
   // Create Pull Request
   context.subscriptions.push(
     vscode.commands.registerCommand('gitaxis.createPullRequest', async () => {
-      const repoPath = getWorkspaceRepoPath();
+      const repoPath = await getActiveWorkspaceRepoPath();
       if (!repoPath) return;
 
       const repo = await repoDiscovery.detectRepository(repoPath);
@@ -183,7 +183,7 @@ export function registerGitHubCommands(
   // View GitHub Actions
   context.subscriptions.push(
     vscode.commands.registerCommand('gitaxis.actions', async () => {
-      const repoPath = getWorkspaceRepoPath();
+      const repoPath = await getActiveWorkspaceRepoPath();
       if (!repoPath) return;
 
       const repo = await repoDiscovery.detectRepository(repoPath);
@@ -247,7 +247,7 @@ export function registerGitHubCommands(
   // View GitHub Releases
   context.subscriptions.push(
     vscode.commands.registerCommand('gitaxis.releases', async () => {
-      const repoPath = getWorkspaceRepoPath();
+      const repoPath = await getActiveWorkspaceRepoPath();
       if (!repoPath) return;
 
       const repo = await repoDiscovery.detectRepository(repoPath);

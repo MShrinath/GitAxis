@@ -204,6 +204,7 @@ export interface GitHubRepositoryCreateInput {
   name: string;
   description?: string;
   private?: boolean;
+  owner?: string;
 }
 
 export interface GitHubRepositoryDeleteInput {

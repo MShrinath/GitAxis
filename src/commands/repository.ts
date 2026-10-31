@@ -4,7 +4,7 @@ import { OperationManager } from '../operations/operationManager';
 import { createOperation, RepositoryStatus } from '../contracts';
 
 import { ProfileManager } from '../profiles/profileManager';
-import { getWorkspaceRepoPath } from '../utils/workspace';
+import { getActiveWorkspaceRepoPath } from '../utils/workspace';
 
 export function registerRepositoryCommands(
   context: vscode.ExtensionContext,
@@ -15,7 +15,7 @@ export function registerRepositoryCommands(
   // Status
   context.subscriptions.push(
     vscode.commands.registerCommand('gitaxis.status', async () => {
-      const repoPath = getWorkspaceRepoPath();
+      const repoPath = await getActiveWorkspaceRepoPath();
       if (!repoPath) {
         vscode.window.showErrorMessage('No workspace folder open.');
         return;
@@ -47,7 +47,7 @@ export function registerRepositoryCommands(
   // Reset
   context.subscriptions.push(
     vscode.commands.registerCommand('gitaxis.reset', async () => {
-      const repoPath = getWorkspaceRepoPath();
+      const repoPath = await getActiveWorkspaceRepoPath();
       if (!repoPath) return;
 
       const modePick = await vscode.window.showQuickPick(
@@ -94,7 +94,7 @@ export function registerRepositoryCommands(
   // Manage Remote
   context.subscriptions.push(
     vscode.commands.registerCommand('gitaxis.manageRemote', async () => {
-      const repoPath = getWorkspaceRepoPath();
+      const repoPath = await getActiveWorkspaceRepoPath();
       if (!repoPath) return;
 
       const action = await vscode.window.showQuickPick(
@@ -171,7 +171,7 @@ export function registerRepositoryCommands(
   let diffOutputChannel: vscode.OutputChannel | undefined;
   context.subscriptions.push(
     vscode.commands.registerCommand('gitaxis.diff', async () => {
-      const repoPath = getWorkspaceRepoPath();
+      const repoPath = await getActiveWorkspaceRepoPath();
       if (!repoPath) {
         vscode.window.showErrorMessage('No workspace folder open.');
         return;
@@ -219,7 +219,7 @@ export function registerRepositoryCommands(
   // History
   context.subscriptions.push(
     vscode.commands.registerCommand('gitaxis.history', async () => {
-      const repoPath = getWorkspaceRepoPath();
+      const repoPath = await getActiveWorkspaceRepoPath();
       if (!repoPath) {
         vscode.window.showErrorMessage('No workspace folder open.');
         return;

@@ -197,6 +197,37 @@ export class ProfileManager {
         logger.info(`Cleaned any persistent PAT extraheaders on ${targetPath}`);
       }
 
+      // 4b. Native SCM Push Authentication (Option A):
+      // Approve PAT with configured credential helper so VS Code built-in Source Control can push.
+      // Skip if helper is plaintext "store" or unset to avoid plaintext disk leakage.
+      if (profile.authentication.type === 'pat') {
+        try {
+          const token = await this.authManager.getPatAuth().getToken(profile.id);
+          if (token) {
+            const helper = await this.gitClient.getCredentialHelper(targetPath);
+            if (!helper) {
+              logger.warn(`No git credential.helper configured; skipping storing PAT in credential helper for profile "${profile.name}".`);
+            } else if (helper.includes('store')) {
+              logger.warn(`Configured git credential.helper is plaintext "store"; skipping storing PAT to prevent plaintext storage for profile "${profile.name}".`);
+            } else {
+              const username = ghUsername || profile.git.name;
+              await this.gitClient.approveCredential(
+                {
+                  protocol: 'https',
+                  host,
+                  username,
+                  password: token,
+                },
+                { cwd: targetPath }
+              );
+              logger.info(`Approved PAT credential in helper "${helper}" for ${username}@${host}`);
+            }
+          }
+        } catch (helperErr) {
+          logger.warn(`Failed to approve PAT in credential helper: ${String(helperErr)}`);
+        }
+      }
+
 
       // 5. SSH Key Alignment: If the profile authentication is SSH with an sshKeyPath, set core.sshCommand to use that key; unset it if switching to a non-SSH profile.
       const rawSshKeyPath = (profile.authentication as { sshKeyPath?: string })?.sshKeyPath?.trim();
