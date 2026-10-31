@@ -462,7 +462,7 @@ export function registerProfileCommands(
 
       const profiles = await profileManager.getProfiles();
       if (profiles.length === 0) {
-        vscode.window.showWarningMessage('No profiles available to bind.');
+        vscode.window.showWarningMessage('No profiles available.');
         return;
       }
 
@@ -475,19 +475,19 @@ export function registerProfileCommands(
       }));
 
       const selected = await vscode.window.showQuickPick(items, {
-        placeHolder: 'Select profile to bind permanently to this repository',
+        placeHolder: 'Select profile for this repository',
       });
       if (!selected) return;
 
       await profileManager.switchProfile(selected.profileId, repoRoot);
       await profileManager.associateRepository(repoRoot, selected.profileId);
       const profile = await profileManager.getProfile(selected.profileId);
-      vscode.window.showInformationMessage(`Repository permanently bound to profile "${profile?.name}".`);
+      vscode.window.showInformationMessage(`Repository profile set to "${profile?.name}".`);
       onProfileChanged?.();
     })
   );
 
-  // 5. Unbind Current Repo from Profile
+  // 5. Clear Repository Profile Override
   context.subscriptions.push(
     vscode.commands.registerCommand('gitaxis.unbindRepo', async () => {
       const repoRoot = await getCurrentRepoRoot();
@@ -498,14 +498,14 @@ export function registerProfileCommands(
 
       const currentBoundId = await profileManager.getAssociation(repoRoot);
       if (!currentBoundId) {
-        vscode.window.showInformationMessage('Current repository is not explicitly bound to any profile.');
+        vscode.window.showInformationMessage('Current repository has no profile association override.');
         return;
       }
 
       const profile = await profileManager.getProfile(currentBoundId);
       await profileManager.disassociateRepository(repoRoot);
       vscode.window.showInformationMessage(
-        `Unbound repository from profile "${profile?.name || currentBoundId}". It will now use auto-matching or fallback.`
+        `Cleared profile override for repository ("${profile?.name || currentBoundId}"). It will now use auto-matching or fallback.`
       );
       onProfileChanged?.();
     })
@@ -612,7 +612,7 @@ export function registerProfileCommands(
 
       let ruleExplanation = 'Fallback (Active profile)';
       if (resolved?.source === 'binding') {
-        ruleExplanation = 'Explicit Repository Binding';
+        ruleExplanation = 'Repository Profile Override';
       } else if (resolved?.source === 'folder-rule') {
         ruleExplanation = `Folder Rule Pattern ("${resolved.folderRule || 'path match'}")`;
       } else if (resolved?.source === 'matcher') {

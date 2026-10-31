@@ -161,7 +161,7 @@ Click the **GitAxis** icon in the left Activity Bar to open the Control Center s
   - **Profile Name**: e.g. `work`, `personal`, `opensource`.
   - **Git Author Name & Email**: Used for commit logs.
   - **GitHub Username**: Used for remote push authentication.
-  - **PAT Token** *(Optional)*: If provided, stored securely in VS Code's encrypted `SecretStorage` and injected into the repo for instant push authentication.
+  - **PAT Token** *(Optional)*: If provided, stored securely in VS Code's encrypted `SecretStorage` and approved with your Git credential helper for native Source Control push authentication.
 
 ### 3. Switch Profile
 Click **[Switch]** on any profile. GitAxis will immediately:

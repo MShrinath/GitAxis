@@ -73,7 +73,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     const fixBtn = 'Fix and continue';
     const continueBtn = 'Commit anyway';
     const cancelBtn = 'Cancel';
-    const msg = `This repo is bound to "${profile.name}" (${profile.git.name} <${profile.git.email}>) but git will commit as "${repoConfig.name || 'unknown'}" <${repoConfig.email || 'unknown'}>.`;
+    const msg = `This repository is configured for profile "${profile.name}" (${profile.git.name} <${profile.git.email}>) but git will commit as "${repoConfig.name || 'unknown'}" <${repoConfig.email || 'unknown'}>.`;
     const choice = await vscode.window.showWarningMessage(
       msg,
       { modal: true },
