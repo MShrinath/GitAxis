@@ -1,0 +1,224 @@
+{
+  "name": "gitaxis",
+  "displayName": "GitAxis - Git & GitHub Profile Manager",
+  "description": "Multi-profile Git and GitHub control center for VS Code",
+  "version": "0.1.0",
+  "publisher": "gitaxis",
+  "icon": "media/icon.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/MShrinath/GitAxis"
+  },
+  "homepage": "https://github.com/MShrinath/GitAxis#readme",
+  "bugs": {
+    "url": "https://github.com/MShrinath/GitAxis/issues"
+  },
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "SCM Providers",
+    "Other"
+  ],
+  "keywords": [
+    "git",
+    "github",
+    "profile",
+    "identity",
+    "account-manager",
+    "credentials"
+  ],
+  "main": "./dist/extension.js",
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "gitaxis-sidebar",
+          "title": "GitAxis",
+          "icon": "media/gitaxis-icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "gitaxis-sidebar": [
+        {
+          "type": "webview",
+          "id": "gitaxis.sidebarView",
+          "name": "Control Center"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "gitaxis.open",
+        "title": "GitHub Manager: Open",
+        "category": "GitAxis"
+      },
+      {
+        "command": "gitaxis.switchProfile",
+        "title": "GitHub Manager: Switch Profile",
+        "category": "GitAxis"
+      },
+      {
+        "command": "gitaxis.createProfile",
+        "title": "GitHub Manager: Create Profile",
+        "category": "GitAxis"
+      },
+      {
+        "command": "gitaxis.manageProfiles",
+        "title": "GitHub Manager: Manage Profiles",
+        "category": "GitAxis"
+      },
+      {
+        "command": "gitaxis.scanAccounts",
+        "title": "GitHub Manager: Scan Existing Accounts",
+        "category": "GitAxis"
+      },
+      {
+        "command": "gitaxis.status",
+        "title": "GitHub Manager: Status",
+        "category": "GitAxis"
+      },
+      {
+        "command": "gitaxis.commit",
+        "title": "GitHub Manager: Commit",
+        "category": "GitAxis"
+      },
+      {
+        "command": "gitaxis.push",
+        "title": "GitHub Manager: Push",
+        "category": "GitAxis"
+      },
+      {
+        "command": "gitaxis.pull",
+        "title": "GitHub Manager: Pull",
+        "category": "GitAxis"
+      },
+      {
+        "command": "gitaxis.fetch",
+        "title": "GitHub Manager: Fetch",
+        "category": "GitAxis"
+      },
+      {
+        "command": "gitaxis.createBranch",
+        "title": "GitHub Manager: Create Branch",
+        "category": "GitAxis"
+      },
+      {
+        "command": "gitaxis.checkoutBranch",
+        "title": "GitHub Manager: Checkout Branch",
+        "category": "GitAxis"
+      },
+      {
+        "command": "gitaxis.merge",
+        "title": "GitHub Manager: Merge",
+        "category": "GitAxis"
+      },
+      {
+        "command": "gitaxis.rebase",
+        "title": "GitHub Manager: Rebase",
+        "category": "GitAxis"
+      },
+      {
+        "command": "gitaxis.stash",
+        "title": "GitHub Manager: Stash",
+        "category": "GitAxis"
+      },
+      {
+        "command": "gitaxis.tag",
+        "title": "GitHub Manager: Tag",
+        "category": "GitAxis"
+      },
+      {
+        "command": "gitaxis.reset",
+        "title": "GitHub Manager: Reset",
+        "category": "GitAxis"
+      },
+      {
+        "command": "gitaxis.manageRemote",
+        "title": "GitHub Manager: Manage Remote",
+        "category": "GitAxis"
+      },
+      {
+        "command": "gitaxis.openGitHubRepo",
+        "title": "GitHub Manager: Open GitHub Repository",
+        "category": "GitAxis"
+      },
+      {
+        "command": "gitaxis.createPullRequest",
+        "title": "GitHub Manager: Create Pull Request",
+        "category": "GitAxis"
+      },
+      {
+        "command": "gitaxis.createIssue",
+        "title": "GitHub Manager: Create Issue",
+        "category": "GitAxis"
+      },
+      {
+        "command": "gitaxis.diff",
+        "title": "GitHub Manager: Diff",
+        "category": "GitAxis"
+      },
+      {
+        "command": "gitaxis.history",
+        "title": "GitHub Manager: History",
+        "category": "GitAxis"
+      },
+      {
+        "command": "gitaxis.clone",
+        "title": "GitHub Manager: Clone Repository",
+        "category": "GitAxis"
+      },
+      {
+        "command": "gitaxis.actions",
+        "title": "GitHub Manager: View GitHub Actions",
+        "category": "GitAxis"
+      },
+      {
+        "command": "gitaxis.releases",
+        "title": "GitHub Manager: View GitHub Releases",
+        "category": "GitAxis"
+      }
+    ],
+    "configuration": {
+      "title": "GitAxis",
+      "properties": {
+        "gitaxis.autoDetectProfile": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically detect and prompt to switch profile based on repository remote and configuration."
+        },
+        "gitaxis.promptScanOnFirstLaunch": {
+          "type": "boolean",
+          "default": true,
+          "description": "Prompt to scan system Git and GitHub CLI configurations on first launch."
+        },
+        "gitaxis.confirmDestructiveOperations": {
+          "type": "boolean",
+          "default": true,
+          "description": "Require explicit confirmation for destructive Git operations (e.g. force push, reset --hard)."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run build",
+    "build": "node esbuild.js --production",
+    "watch": "node esbuild.js --watch",
+    "compile": "tsc -p ./",
+    "test": "mocha -r ts-node/register \"test/**/*.test.ts\"",
+    "package": "vsce package --no-dependencies"
+  },
+  "devDependencies": {
+    "@types/mocha": "^10.0.6",
+    "@types/node": "^20.11.24",
+    "@types/vscode": "^1.85.0",
+    "esbuild": "^0.20.1",
+    "mocha": "^10.3.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.3.3"
+  }
+}

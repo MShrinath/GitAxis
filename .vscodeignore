@@ -1,0 +1,14 @@
+.vscode/**
+src/**
+test/**
+out/**
+tsconfig.json
+esbuild.js
+PLAN.md
+DATA-CONTRACTS.md
+*.md
+!README.md
+!readme.md
+.gitignore
+.gemini/**
+node_modules/**
