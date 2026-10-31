@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.10.0] - 2026-10-31
+
+### Added & Improved
+- **Author Email Hover Tooltips**: Cleaned up identity cards so emails are no longer rendered inline across cards. Hovering over author names seamlessly shows full emails in native tooltips.
+- **Discreet Account Scanner**: Replaced the bulky full-width account scanner section with a discreet magnifying glass button in the header bar and profiles header (`title="Scan local Git & GitHub CLI logins"`). Discovered accounts only appear when accounts are detected.
+- **Fixed Profile Switching**: Unified sidebar webview switching with `gitaxis.switchProfile` to ensure switching reliably updates local repository `.git/config`, persists repository associations, updates the status bar, and re-renders the webview.
+
+---
+
 ## [0.9.0] - 2026-10-31
 
 ### Added & Improved

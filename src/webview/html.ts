@@ -144,11 +144,16 @@ export class HtmlBuilder {
   <div class="header-bar">
     <div class="brand-title">
       <span>GitAxis Control Center</span>
-      <span class="brand-pill">v0.7.0</span>
+      <span class="brand-pill">v0.10.0</span>
     </div>
-    <button type="button" class="icon-btn-ghost" title="Refresh state" data-action="refresh">
-      ${Icons.refresh}
-    </button>
+    <div class="header-actions">
+      <button type="button" class="icon-btn-ghost" title="Scan local Git &amp; GitHub CLI logins" data-action="scanAccounts">
+        ${Icons.search}
+      </button>
+      <button type="button" class="icon-btn-ghost" title="Refresh state" data-action="refresh">
+        ${Icons.refresh}
+      </button>
+    </div>
   </div>
 
   <!-- ACTIVE IDENTITY & REPO -->
@@ -167,7 +172,7 @@ export class HtmlBuilder {
       <div class="meta-list">
         <div class="meta-item">
           ${Icons.user}
-          <span>${profileAuthor ? `${profileAuthor} <span class="sub">&lt;${profileEmail}&gt;</span>` : profileEmail}</span>
+          <span class="author-hover-email" title="${escapeHtml(profileEmail)}">${escapeHtml(profileAuthor || profileEmail)}</span>
         </div>
         <div class="meta-item">
           ${Icons.github}
@@ -204,52 +209,52 @@ export class HtmlBuilder {
     </div>
   </div>
 
-  <!-- SYSTEM ACCOUNT SCANNER -->
-  <div class="section">
+  <!-- DISCOVERED ACCOUNTS (shown when accounts found from scan) -->
+  ${
+    discovered.length > 0
+      ? `<div class="section discovered-section">
     <div class="section-title-row">
-      <span class="section-title">SYSTEM ACCOUNT SCANNER</span>
+      <span class="section-title">DISCOVERED ACCOUNTS (${discovered.length})</span>
+      <button type="button" class="icon-btn-ghost" title="Dismiss" data-action="dismissDiscovered">✕</button>
     </div>
-    <button type="button" class="btn-scan-bar" data-action="scanAccounts">
-      ${Icons.search}
-      <span>Scan Local Git &amp; GitHub CLI Accounts</span>
-    </button>
-    ${
-      discovered.length > 0
-        ? `<div class="discovered-deck">
-            <button type="button" class="btn btn-sm btn-primary" data-action="importAllDiscoveredAccounts" style="margin-bottom: 8px; width: 100%;">
-              ${Icons.plus} Create profiles for all found accounts (${discovered.length})
-            </button>
-            ${discovered
-              .map(
-                (acc, idx) => `
-              <div class="discovered-item">
-                <div class="discovered-header">
-                  <span>${escapeHtml(acc.github?.username ? '@' + acc.github.username : acc.name)}</span>
-                  <span class="source-tag">${escapeHtml(acc.source || 'detected')}</span>
-                </div>
-                <div class="hint-text">${escapeHtml(acc.git.name)} &lt;${escapeHtml(acc.git.email)}&gt;</div>
-                ${acc.github ? `<div class="hint-text">Host: ${escapeHtml(acc.github.host)}</div>` : ''}
-                <div class="btn-group">
-                  <button type="button" class="btn btn-sm" data-action="importDiscoveredAccount" data-index="${idx}">+ Import as Profile</button>
-                  <button type="button" class="btn btn-sm btn-secondary" data-action="fillForm" data-index="${idx}">Fill Form</button>
-                </div>
-              </div>`
-              )
-              .join('')}
-          </div>`
-        : state.scanPerformed
-        ? `<div class="hint-text">Scan completed. All discovered accounts are already in profiles or none were found.</div>`
-        : `<div class="hint-text">1-click scan local Git configurations and GitHub CLI to import accounts seamlessly.</div>`
-    }
-  </div>
+    <div class="discovered-deck">
+      <button type="button" class="btn btn-sm btn-primary" data-action="importAllDiscoveredAccounts" style="margin-bottom: 8px; width: 100%;">
+        ${Icons.plus} Create profiles for all found accounts (${discovered.length})
+      </button>
+      ${discovered
+        .map(
+          (acc, idx) => `
+        <div class="discovered-item">
+          <div class="discovered-header">
+            <span>${escapeHtml(acc.github?.username ? '@' + acc.github.username : acc.name)}</span>
+            <span class="source-tag">${escapeHtml(acc.source || 'detected')}</span>
+          </div>
+          <div class="hint-text"><span class="author-hover-email" title="${escapeHtml(acc.git.email)}">${escapeHtml(acc.git.name)}</span></div>
+          ${acc.github ? `<div class="hint-text">Host: ${escapeHtml(acc.github.host)}</div>` : ''}
+          <div class="btn-group">
+            <button type="button" class="btn btn-sm" data-action="importDiscoveredAccount" data-index="${idx}">+ Import as Profile</button>
+            <button type="button" class="btn btn-sm btn-secondary" data-action="fillForm" data-index="${idx}">Fill Form</button>
+          </div>
+        </div>`
+        )
+        .join('')}
+    </div>
+  </div>`
+      : ''
+  }
 
   <!-- PROFILES LIST -->
   <div class="section">
     <div class="section-title-row">
       <span class="section-title">PROFILES (${profiles.length})</span>
-      <button type="button" class="btn-xs" data-action="startNewProfile">
-        ${Icons.plus} Add Profile
-      </button>
+      <div style="display: flex; gap: 4px; align-items: center;">
+        <button type="button" class="icon-btn-ghost" title="Scan local Git &amp; GitHub CLI logins" data-action="scanAccounts">
+          ${Icons.search}
+        </button>
+        <button type="button" class="btn-xs" data-action="startNewProfile">
+          ${Icons.plus} Add Profile
+        </button>
+      </div>
     </div>
     ${
       profiles.length === 0
@@ -275,7 +280,7 @@ export class HtmlBuilder {
         <div class="meta-list">
           <div class="meta-item">
             ${Icons.user}
-            <span>${escapeHtml(p.git.name)} <span class="sub">&lt;${escapeHtml(p.git.email)}&gt;</span></span>
+            <span class="author-hover-email" title="${escapeHtml(p.git.email)}">${escapeHtml(p.git.name)}</span>
           </div>
           <div class="meta-item">
             ${Icons.github}

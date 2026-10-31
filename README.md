@@ -2,7 +2,7 @@
 
 [![GitHub Release](https://img.shields.io/github/v/release/MShrinath/GitAxis?logo=github&color=blue)](https://github.com/MShrinath/GitAxis/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
-[![Build & Tests](https://img.shields.io/badge/tests-98%20passing-brightgreen.svg)](https://github.com/MShrinath/GitAxis)
+[![Build & Tests](https://img.shields.io/badge/tests-99%20passing-brightgreen.svg)](https://github.com/MShrinath/GitAxis)
 [![VS Code](https://img.shields.io/badge/VS%20Code-1.85%2B-007acc.svg?logo=visualstudiocode)](https://code.visualstudio.com/)
 
 **GitAxis** is a dedicated identity and profile manager for Visual Studio Code and VS Code Insiders. 
@@ -95,7 +95,7 @@ When working across multiple GitHub accounts on the same computer:
 ### Method 1: Install from GitHub Releases (Recommended)
 
 1. Go to the [GitAxis GitHub Releases Page](https://github.com/MShrinath/GitAxis/releases).
-2. Download the latest `.vsix` package (e.g. `gitaxis-0.9.0.vsix`).
+2. Download the latest `.vsix` package (e.g. `gitaxis-0.10.0.vsix`).
 3. Open **VS Code** or **VS Code Insiders**.
 4. Open the Extensions view (`Ctrl+Shift+X` or `Cmd+Shift+X`).
 5. Click the **`···`** (Views and More Actions) menu in the top right of the Extensions panel.
@@ -109,10 +109,10 @@ If you have VS Code in your system `PATH`:
 
 ```powershell
 # For standard VS Code:
-code --install-extension gitaxis-0.9.0.vsix
+code --install-extension gitaxis-0.10.0.vsix
 
 # For VS Code Insiders:
-code-insiders --install-extension gitaxis-0.9.0.vsix
+code-insiders --install-extension gitaxis-0.10.0.vsix
 ```
 
 ---
@@ -195,7 +195,7 @@ When using VS Code Remote (SSH, WSL, Dev Containers, or GitHub Codespaces), GitA
 ## Development & Testing
 
 ```bash
-# Run automated tests (98 unit tests)
+# Run automated tests (99 unit tests)
 npm test
 
 # Check TypeScript types

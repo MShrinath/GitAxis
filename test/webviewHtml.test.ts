@@ -127,7 +127,7 @@ describe('Webview HTML Builder (V2 Profile Control Center)', () => {
     assert.strictEqual(html.includes("sendCmd('releases')"), false);
   });
 
-  it('should render system discovery scan bar and 1-click import chips', () => {
+  it('should render discreet account scanner and 1-click import chips when discovered', () => {
     const state: WebviewState = {
       profile: dummyProfile,
       profiles: [dummyProfile],
@@ -144,13 +144,26 @@ describe('Webview HTML Builder (V2 Profile Control Center)', () => {
 
     const html = HtmlBuilder.render(state);
 
-    assert.ok(html.includes('SYSTEM ACCOUNT SCANNER'));
-    assert.ok(html.includes('Scan Local Git &amp; GitHub CLI Accounts'));
+    // Discreet scanner icon button on top & in profiles header
+    assert.ok(html.includes('data-action="scanAccounts"'));
+    assert.ok(html.includes('Scan local Git &amp; GitHub CLI logins'));
+    assert.ok(html.includes('DISCOVERED ACCOUNTS (1)'));
     assert.ok(html.includes('@octocat'));
     assert.ok(html.includes('octocat@github.com'));
     assert.ok(html.includes('+ Import as Profile'));
     assert.ok(html.includes('data-action="importDiscoveredAccount"'));
     assert.ok(html.includes('data-index="0"'));
+  });
+
+  it('should format author name with hover email tooltip rather than inline email', () => {
+    const html = HtmlBuilder.render({
+      profile: dummyProfile,
+      profiles: [dummyProfile],
+    });
+
+    assert.ok(html.includes('class="author-hover-email"'));
+    assert.ok(html.includes('title="john@company.com"'));
+    assert.ok(!html.includes('&lt;john@company.com&gt;'));
   });
 
   it('should render profile action buttons: switch, edit, delete (without link repo)', () => {

@@ -283,6 +283,9 @@
       case 'scanAccounts':
         vscode.postMessage({ command: 'scanAccounts' });
         break;
+      case 'dismissDiscovered':
+        vscode.postMessage({ command: 'dismissDiscovered' });
+        break;
       case 'startNewProfile':
         startNewProfile();
         break;

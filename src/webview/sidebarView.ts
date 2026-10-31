@@ -26,6 +26,7 @@ const ALLOWED_COMMANDS = new Set([
   'unlinkRepo',
   'useRecommended',
   'verifyProfile',
+  'dismissDiscovered',
 ]);
 
 export class SidebarViewProvider implements vscode.WebviewViewProvider {
@@ -76,42 +77,18 @@ export class SidebarViewProvider implements vscode.WebviewViewProvider {
                 logger.warn('Invalid profileId in switchProfile message');
                 break;
               }
-              const targetProfile = await this.profileManager.getProfile(message.profileId);
-              if (!targetProfile) {
-                vscode.window.showWarningMessage(`Cannot switch: profile "${message.profileId}" does not exist.`);
-                break;
-              }
-
-              const confirmGlobalGitChange = async (): Promise<boolean> => {
-                const continueBtn = 'Continue';
-                const choice = await vscode.window.showWarningMessage(
-                  "You're about to change your global Git identity.",
-                  { modal: true, detail: "This affects repositories that don't override their local Git identity." },
-                  continueBtn
-                );
-                return choice === continueBtn;
-              };
-
-              const activeUri = vscode.window.activeTextEditor?.document.uri;
-              const workspaceFolder = activeUri
-                ? vscode.workspace.getWorkspaceFolder(activeUri)?.uri.fsPath
-                : vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-              let repoPath: string | undefined;
-              if (workspaceFolder) {
-                const repo = await this.repoDiscovery.detectRepository(workspaceFolder);
-                repoPath = repo?.path;
-              }
-              const switched = await this.profileManager.switchProfile(
-                message.profileId,
-                repoPath,
-                confirmGlobalGitChange
-              );
-              vscode.window.showInformationMessage(`Active profile switched to "${switched.name}".`);
-              this.onProfileChanged?.();
+              await vscode.commands.executeCommand('gitaxis.switchProfile', message.profileId);
               await this.refresh();
             } else {
               await vscode.commands.executeCommand('gitaxis.switchProfile');
             }
+            break;
+          }
+
+          case 'dismissDiscovered': {
+            this.discoveredAccounts = [];
+            this.scanPerformed = false;
+            await this.refresh();
             break;
           }
 
@@ -622,7 +599,7 @@ export class SidebarViewProvider implements vscode.WebviewViewProvider {
     const folderPath = getWorkspaceRepoPath();
 
     if (folderPath) {
-      repository = await this.repoDiscovery.detectRepository(folderPath);
+      repository = await this.repoDiscovery.detectRepository(folderPath, true);
 
       if (repository) {
         linkedProfileId = await this.profileManager.getAssociation(repository.path);

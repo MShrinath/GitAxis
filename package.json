@@ -2,7 +2,7 @@
   "name": "gitaxis",
   "displayName": "GitAxis - Git & GitHub Profile Manager",
   "description": "Multi-profile Git and GitHub control center for VS Code",
-  "version": "0.9.0",
+  "version": "0.10.0",
   "license": "MIT",
   "publisher": "gitaxis",
   "icon": "media/icon.png",
