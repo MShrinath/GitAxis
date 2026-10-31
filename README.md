@@ -94,7 +94,7 @@ When working across multiple GitHub accounts on the same computer:
 ### Method 1: Install from GitHub Releases (Recommended)
 
 1. Go to the [GitAxis GitHub Releases Page](https://github.com/MShrinath/GitAxis/releases).
-2. Download the latest `.vsix` package (e.g. `gitaxis-0.11.0.vsix`).
+2. Download the latest `.vsix` package (e.g. `gitaxis-0.11.1.vsix`).
 3. Open **VS Code** or **VS Code Insiders**.
 4. Open the Extensions view (`Ctrl+Shift+X` or `Cmd+Shift+X`).
 5. Click the **`···`** (Views and More Actions) menu in the top right of the Extensions panel.
@@ -108,10 +108,10 @@ If you have VS Code in your system `PATH`:
 
 ```powershell
 # For standard VS Code:
-code --install-extension gitaxis-0.11.0.vsix
+code --install-extension gitaxis-0.11.1.vsix
 
 # For VS Code Insiders:
-code-insiders --install-extension gitaxis-0.11.0.vsix
+code-insiders --install-extension gitaxis-0.11.1.vsix
 ```
 
 ---
