@@ -93,6 +93,7 @@ export class PersistentProfileStore implements ProfileStore {
       authentication: {
         type: input.authentication.type,
         source: input.authentication.source,
+        sshKeyPath: input.authentication.sshKeyPath?.trim() || undefined,
         secretRef:
           input.authentication.type === 'pat'
             ? {
@@ -162,6 +163,9 @@ export class PersistentProfileStore implements ProfileStore {
         ...current.authentication,
         ...(input.authentication?.type ? { type: input.authentication.type } : {}),
         ...(input.authentication?.source ? { source: input.authentication.source } : {}),
+        ...(input.authentication?.sshKeyPath !== undefined
+          ? { sshKeyPath: input.authentication.sshKeyPath.trim() || undefined }
+          : {}),
       },
       metadata: {
         ...current.metadata,

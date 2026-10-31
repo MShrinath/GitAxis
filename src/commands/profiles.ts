@@ -53,7 +53,10 @@ export function registerProfileCommands(
         return choice === continueBtn;
       };
 
-      const workspaceFolder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+      const activeUri = vscode.window.activeTextEditor?.document.uri;
+      const workspaceFolder = activeUri
+        ? vscode.workspace.getWorkspaceFolder(activeUri)?.uri.fsPath
+        : vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
       await profileManager.switchProfile(selectedId, workspaceFolder, confirmGlobalGitChange);
 
       // Ask to associate with current workspace if open
@@ -161,6 +164,7 @@ export function registerProfileCommands(
       if (!authSelection) return;
 
       let patToken: string | undefined;
+      let sshKeyPath: string | undefined;
       if (authSelection.type === 'pat') {
         patToken = await vscode.window.showInputBox({
           title: 'GitHub Personal Access Token',
@@ -169,6 +173,11 @@ export function registerProfileCommands(
           validateInput: val => (val.trim().length > 0 ? undefined : 'Token cannot be empty'),
         });
         if (!patToken) return;
+      } else if (authSelection.type === 'ssh') {
+        sshKeyPath = await vscode.window.showInputBox({
+          title: 'SSH Key Path (Optional)',
+          prompt: 'Enter path to SSH private key (e.g. ~/.ssh/id_ed25519), or leave empty for default agent/keys',
+        });
       }
 
       const input: CreateProfileInput = {
@@ -182,6 +191,7 @@ export function registerProfileCommands(
         authentication: {
           type: authSelection.type,
           source: authSelection.type === 'pat' ? 'vs-code-secret-storage' : 'user-input',
+          sshKeyPath: sshKeyPath?.trim() || undefined,
         },
       };
 
@@ -229,10 +239,7 @@ export function registerProfileCommands(
       if (!action) return;
 
       if (action.action === 'active') {
-        const workspaceFolder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-        await profileManager.switchProfile(selected.profileId, workspaceFolder);
-        vscode.window.showInformationMessage(`Switched active profile to "${selected.label}".`);
-        onProfileChanged?.();
+        await vscode.commands.executeCommand('gitaxis.switchProfile', selected.profileId);
       } else if (action.action === 'rename') {
         const newName = await vscode.window.showInputBox({
           title: 'Rename Profile',
@@ -269,9 +276,19 @@ export function registerProfileCommands(
         if (!newGitEmail) return;
 
         try {
-          await profileManager.updateProfile(selected.profileId, {
+          const updated = await profileManager.updateProfile(selected.profileId, {
             git: { name: newGitName.trim(), email: newGitEmail.trim() },
           });
+          const active = await profileManager.getActiveProfile();
+          if (active?.id === selected.profileId) {
+            const activeUri = vscode.window.activeTextEditor?.document.uri;
+            const workspaceFolder = activeUri
+              ? vscode.workspace.getWorkspaceFolder(activeUri)?.uri.fsPath
+              : vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+            if (workspaceFolder) {
+              await profileManager.applyIdentityToRepository(updated, workspaceFolder);
+            }
+          }
           vscode.window.showInformationMessage(`Profile "${profile.name}" updated.`);
           onProfileChanged?.();
         } catch (err) {

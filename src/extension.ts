@@ -95,6 +95,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     if (sidebarProvider) {
       await sidebarProvider.refresh();
     }
+    try {
+      await vscode.commands.executeCommand('git.refresh');
+    } catch {
+      // Ignore if built-in git extension is not active
+    }
   };
 
   // 4. Sidebar Webview Provider

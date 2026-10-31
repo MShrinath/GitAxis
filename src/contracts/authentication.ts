@@ -25,11 +25,13 @@ export interface AuthenticationConfig {
   type: AuthenticationType;
   secretRef?: SecretReference;
   source?: AuthenticationSource;
+  sshKeyPath?: string;
 }
 
 export interface AuthenticationConfigInput {
   type: AuthenticationType;
   source?: AuthenticationSource;
+  sshKeyPath?: string;
 }
 
 export type SecretType =

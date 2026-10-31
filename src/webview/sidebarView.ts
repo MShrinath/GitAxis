@@ -54,7 +54,10 @@ export class SidebarViewProvider implements vscode.WebviewViewProvider {
                 return choice === continueBtn;
               };
 
-              const workspaceFolder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+              const activeUri = vscode.window.activeTextEditor?.document.uri;
+              const workspaceFolder = activeUri
+                ? vscode.workspace.getWorkspaceFolder(activeUri)?.uri.fsPath
+                : vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
               let repoPath: string | undefined;
               if (workspaceFolder) {
                 const repo = await this.repoDiscovery.detectRepository(workspaceFolder);
@@ -119,7 +122,10 @@ export class SidebarViewProvider implements vscode.WebviewViewProvider {
             const created = await this.profileManager.createProfile(input, data.pat?.trim() || undefined);
             const active = await this.profileManager.getActiveProfile();
             if (active?.id === created.id) {
-              const workspaceFolder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+              const activeUri = vscode.window.activeTextEditor?.document.uri;
+              const workspaceFolder = activeUri
+                ? vscode.workspace.getWorkspaceFolder(activeUri)?.uri.fsPath
+                : vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
               if (workspaceFolder) {
                 const repo = await this.repoDiscovery.detectRepository(workspaceFolder);
                 if (repo) {
@@ -180,7 +186,10 @@ export class SidebarViewProvider implements vscode.WebviewViewProvider {
             const updated = await this.profileManager.updateProfile(data.id, input, data.pat?.trim() || undefined);
             const active = await this.profileManager.getActiveProfile();
             if (active?.id === updated.id) {
-              const workspaceFolder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+              const activeUri = vscode.window.activeTextEditor?.document.uri;
+              const workspaceFolder = activeUri
+                ? vscode.workspace.getWorkspaceFolder(activeUri)?.uri.fsPath
+                : vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
               if (workspaceFolder) {
                 const repo = await this.repoDiscovery.detectRepository(workspaceFolder);
                 if (repo) {
@@ -352,7 +361,10 @@ export class SidebarViewProvider implements vscode.WebviewViewProvider {
                 return choice === continueBtn;
               };
 
-              const workspaceFolder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+              const activeUri = vscode.window.activeTextEditor?.document.uri;
+              const workspaceFolder = activeUri
+                ? vscode.workspace.getWorkspaceFolder(activeUri)?.uri.fsPath
+                : vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
               let repoPath: string | undefined;
               if (workspaceFolder) {
                 const repo = await this.repoDiscovery.detectRepository(workspaceFolder);

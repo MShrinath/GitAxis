@@ -368,6 +368,14 @@ export class GitClient {
     await this.exec(['config', '--local', key, value], { cwd: repoPath });
   }
 
+  public async unsetLocalConfig(repoPath: string, key: string): Promise<void> {
+    try {
+      await this.exec(['config', '--local', '--unset-all', key], { cwd: repoPath });
+    } catch {
+      // Ignore if key is not set
+    }
+  }
+
   public async getGlobalConfig(key: string): Promise<string | undefined> {
     try {
       const { stdout } = await this.exec(['config', '--global', '--get', key]);
@@ -379,5 +387,13 @@ export class GitClient {
 
   public async setGlobalConfig(key: string, value: string): Promise<void> {
     await this.exec(['config', '--global', key, value]);
+  }
+
+  public async unsetGlobalConfig(key: string): Promise<void> {
+    try {
+      await this.exec(['config', '--global', '--unset-all', key]);
+    } catch {
+      // Ignore if key is not set
+    }
   }
 }
