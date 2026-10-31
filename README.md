@@ -2,7 +2,7 @@
 
 [![GitHub Release](https://img.shields.io/github/v/release/MShrinath/GitAxis?logo=github&color=blue)](https://github.com/MShrinath/GitAxis/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
-[![Build & Tests](https://img.shields.io/badge/tests-89%20passing-brightgreen.svg)](https://github.com/MShrinath/GitAxis)
+[![Build & Tests](https://img.shields.io/badge/tests-93%20passing-brightgreen.svg)](https://github.com/MShrinath/GitAxis)
 [![VS Code](https://img.shields.io/badge/VS%20Code-1.85%2B-007acc.svg?logo=visualstudiocode)](https://code.visualstudio.com/)
 
 **GitAxis** is a dedicated identity and profile manager for Visual Studio Code and VS Code Insiders. 

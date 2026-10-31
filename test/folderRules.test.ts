@@ -8,6 +8,7 @@ import { ProfileManager } from '../src/profiles/profileManager';
 import { AuthManager } from '../src/auth/authManager';
 import { SecretStore } from '../src/auth/secretStore';
 import { GitClient } from '../src/git/gitClient';
+import { Platform } from '../src/utils/platform';
 
 describe('Folder Rules & Set-and-Forget (v0.6.0)', () => {
   let tmpDir: string;
@@ -56,6 +57,19 @@ describe('Folder Rules & Set-and-Forget (v0.6.0)', () => {
       const target = 'C:/Users/Developer/work/repo1';
       assert.strictEqual(folderRuleManager.matchesPattern(target, 'C:/Users/Developer/work/**'), true);
       assert.strictEqual(folderRuleManager.matchesPattern('c:/users/developer/work/repo1', 'C:/Users/Developer/work/**'), true);
+    });
+
+    it('should match Windows-style paths case-insensitively even on Linux runners', () => {
+      const originalIsWin = Platform.isWindows;
+      const originalIsMac = Platform.isMacOS;
+      try {
+        (Platform as any).isWindows = () => false;
+        (Platform as any).isMacOS = () => false;
+        assert.strictEqual(folderRuleManager.matchesPattern('c:/users/developer/work/repo1', 'C:/Users/Developer/work/**'), true);
+      } finally {
+        (Platform as any).isWindows = originalIsWin;
+        (Platform as any).isMacOS = originalIsMac;
+      }
     });
 
     it('should resolve the longest/most specific folder rule when multiple match', () => {

@@ -94,7 +94,8 @@ export class FolderRuleManager {
     }
     const normPattern = this.normalizePathForComparison(cleanPattern);
 
-    const isCaseInsensitive = Platform.isWindows() || Platform.isMacOS();
+    const isWindowsPath = /^[a-zA-Z]:\//i.test(normTarget) || /^[a-zA-Z]:\//i.test(normPattern);
+    const isCaseInsensitive = Platform.isWindows() || Platform.isMacOS() || isWindowsPath;
     const target = isCaseInsensitive ? normTarget.toLowerCase() : normTarget;
     const pattern = isCaseInsensitive ? normPattern.toLowerCase() : normPattern;
 

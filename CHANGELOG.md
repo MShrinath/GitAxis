@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.7.1] - 2026-10-31
+
+### Fixed
+- **Cross-Platform Path Normalization in Folder Rules**: Ensured Windows-style drive paths (e.g. `C:/...`, `c:/...`) are matched case-insensitively across all operating systems, including Linux CI runners.
+- **Cross-Platform Path Utility**: Standardized `Platform.normalizePath` with POSIX separator normalization across environments.
+
+---
+
 ## [0.7.0] - 2026-10-31
 
 ### Added

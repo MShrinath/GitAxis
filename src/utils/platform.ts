@@ -15,8 +15,9 @@ export class Platform {
   }
 
   public static normalizePath(filePath: string): string {
-    const normalized = path.normalize(filePath).replace(/\\/g, '/');
-    if (Platform.isWindows()) {
+    let normalized = filePath.replace(/\\/g, '/');
+    normalized = path.posix.normalize(normalized);
+    if (Platform.isWindows() || /^[a-zA-Z]:/.test(normalized)) {
       return normalized.replace(/^[a-zA-Z]:/, m => m.toUpperCase());
     }
     return normalized;
