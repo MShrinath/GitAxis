@@ -163,30 +163,17 @@ export class ProfileManager {
         }
       }
 
-      // 4. PAT Token Authentication: If the profile has a PAT stored in SecretStorage, set http.https://${host}/.extraheader with AUTHORIZATION: basic <base64> in the repository git config so VS Code Source Control pushes authenticate immediately. If switching to a profile without a PAT, cleanly unset this extraheader.
+      // 4. PAT Token Authentication: Do NOT persist PATs to .git/config (Section 1). Ensure any leftover extraheaders are cleanly removed. Credentials are provided per-command in memory.
       if (isRepo && targetPath) {
         const extraHeaderKey = `http.https://${host}/.extraheader`;
-        let patToken: string | undefined;
-        if (profile.authentication.type === 'pat') {
-          patToken = await this.authManager.getPatAuth().getToken(profile.id);
+        await this.gitClient.unsetLocalConfig(targetPath, extraHeaderKey);
+        if (host.toLowerCase() !== 'github.com') {
+          await this.gitClient.unsetLocalConfig(targetPath, 'http.https://github.com/.extraheader');
         }
-
-        if (patToken) {
-          const authUser = ghUsername || profile.git.name?.trim() || '';
-          const authString = authUser ? `${authUser}:${patToken}` : `:${patToken}`;
-          const base64Auth = Buffer.from(authString).toString('base64');
-          const extraHeaderValue = `AUTHORIZATION: basic ${base64Auth}`;
-          await this.gitClient.setLocalConfig(targetPath, extraHeaderKey, extraHeaderValue);
-          logger.info(`Configured PAT extraheader for ${host} on ${targetPath}`);
-        } else {
-          await this.gitClient.unsetLocalConfig(targetPath, extraHeaderKey);
-          if (host.toLowerCase() !== 'github.com') {
-            await this.gitClient.unsetLocalConfig(targetPath, 'http.https://github.com/.extraheader');
-          }
-          await this.gitClient.unsetLocalConfig(targetPath, 'http.extraheader');
-          logger.info(`Unset PAT extraheader on ${targetPath}`);
-        }
+        await this.gitClient.unsetLocalConfig(targetPath, 'http.extraheader');
+        logger.info(`Cleaned any persistent PAT extraheaders on ${targetPath}`);
       }
+
 
       // 5. SSH Key Alignment: If the profile authentication is SSH with an sshKeyPath, set core.sshCommand to use that key; unset it if switching to a non-SSH profile.
       const rawSshKeyPath = (profile.authentication as { sshKeyPath?: string })?.sshKeyPath?.trim();

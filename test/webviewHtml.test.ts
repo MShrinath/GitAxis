@@ -88,8 +88,8 @@ describe('Webview HTML Builder (V2 Profile Control Center)', () => {
     assert.ok(html.includes('id="form-pat"'));
     assert.ok(html.includes('name="form-scope"'));
     assert.ok(html.includes('btn-toggle-pat'));
-    assert.ok(html.includes('restoreFormFromState'));
-    assert.ok(html.includes('saveCurrentFormToState'));
+    assert.ok(html.includes('main.js'));
+    assert.ok(html.includes('main.css'));
   });
 
   it('should NOT render redundant Git action buttons or GitHub issues/PR sections', () => {
@@ -142,7 +142,8 @@ describe('Webview HTML Builder (V2 Profile Control Center)', () => {
     assert.ok(html.includes('@octocat'));
     assert.ok(html.includes('octocat@github.com'));
     assert.ok(html.includes('+ Import as Profile'));
-    assert.ok(html.includes('importDiscoveredAccount(0)'));
+    assert.ok(html.includes('data-action="importDiscoveredAccount"'));
+    assert.ok(html.includes('data-index="0"'));
   });
 
   it('should render profile action buttons: switch, edit, delete (without link repo)', () => {
@@ -164,13 +165,13 @@ describe('Webview HTML Builder (V2 Profile Control Center)', () => {
     const html = HtmlBuilder.render(state);
 
     // Active profile has Edit, Delete (no link/unlink)
-    assert.ok(html.includes("editProfile('prof_1')"));
-    assert.ok(html.includes("deleteProfile('prof_1'"));
+    assert.ok(html.includes('data-action="editProfile"') && html.includes('data-profile-id="prof_1"'));
+    assert.ok(html.includes('data-action="deleteProfile"') && html.includes('data-profile-id="prof_1"'));
 
     // Inactive profile has Switch, Edit, Delete (no link/unlink)
-    assert.ok(html.includes("switchProfile('prof_2')"));
-    assert.ok(html.includes("editProfile('prof_2')"));
-    assert.ok(html.includes("deleteProfile('prof_2'"));
+    assert.ok(html.includes('data-action="switchProfile"') && html.includes('data-profile-id="prof_2"'));
+    assert.ok(html.includes('data-action="editProfile"') && html.includes('data-profile-id="prof_2"'));
+    assert.ok(html.includes('data-action="deleteProfile"') && html.includes('data-profile-id="prof_2"'));
 
     // Ensure link repo is completely removed from UI
     assert.strictEqual(html.includes('linkRepo('), false);
@@ -219,9 +220,11 @@ describe('Webview HTML Builder (V2 Profile Control Center)', () => {
 
     const html = HtmlBuilder.render(state, 'vscode-webview:');
 
-    // CSP header includes the provided cspSource
+    // Strict CSP header: NO unsafe-inline
+    assert.ok(html.includes('default-src &#39;none&#39;') || html.includes("default-src 'none'"));
+    assert.strictEqual(html.includes("'unsafe-inline'"), false);
     assert.ok(html.includes('vscode-webview:'));
-    assert.ok(html.includes("'unsafe-inline'"));
+    assert.ok(html.includes('script-src &#39;nonce-') || html.includes("script-src 'nonce-"));
 
     // Names and emails are escaped in HTML content
     assert.ok(html.includes('Work &quot;Client&quot; &amp; &lt;Co&gt;'));
@@ -232,12 +235,8 @@ describe('Webview HTML Builder (V2 Profile Control Center)', () => {
     assert.ok(!html.includes('repo"onclick='));
     assert.ok(html.includes('repo&quot;onclick='));
     assert.ok(!html.includes('<script>alert(1)</script>'));
-
-    // Message listener for backend events is present
-    assert.ok(html.includes("msg.command === 'saveSuccess'"));
-    assert.ok(html.includes("msg.command === 'saveError'"));
-    assert.ok(html.includes("msg.command === 'profileDeleted'"));
   });
+
 
   it('should format profile without GitHub identity cleanly', () => {
     const gitOnlyProfile: GitProfile = {

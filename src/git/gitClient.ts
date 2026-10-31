@@ -7,6 +7,7 @@ import { StashEntry, StashParser } from './stash';
 import { TagInfo, TagParser } from './tag';
 import { GitRemote, RepositoryStatus } from '../contracts';
 import { logger } from '../utils/logger';
+import { Validation } from '../utils/validation';
 
 const execFileAsync = promisify(execFile);
 
@@ -36,10 +37,14 @@ export class GitClient {
       const error = err as { stdout?: string; stderr?: string; message?: string; code?: number };
       const stdout = error.stdout?.trim() || '';
       const stderr = error.stderr?.trim() || error.message || '';
-      logger.error(`Git command failed: ${this.gitPath} ${args.join(' ')}: ${stderr}`);
-      throw new Error(stderr || stdout || `Git process exited with code ${error.code}`);
+      const sanitizedCmd = Validation.sanitizeUrl(`${this.gitPath} ${args.join(' ')}`);
+      const sanitizedStderr = Validation.sanitizeUrl(stderr);
+      const sanitizedStdout = Validation.sanitizeUrl(stdout);
+      logger.error(`Git command failed: ${sanitizedCmd}: ${sanitizedStderr}`);
+      throw new Error(sanitizedStderr || sanitizedStdout || `Git process exited with code ${error.code}`);
     }
   }
+
 
   public async isGitAvailable(): Promise<boolean> {
     try {
@@ -155,6 +160,12 @@ export class GitClient {
   }
 
   public async createBranch(repoPath: string, name: string, startPoint?: string, checkout?: boolean): Promise<void> {
+    if (!Validation.isValidBranchName(name)) {
+      throw new Error(`Invalid branch name: "${name}"`);
+    }
+    if (startPoint && !Validation.isValidRef(startPoint)) {
+      throw new Error(`Invalid start point ref: "${startPoint}"`);
+    }
     if (checkout) {
       const args = ['checkout', '-b', name];
       if (startPoint) args.push(startPoint);
@@ -167,24 +178,38 @@ export class GitClient {
   }
 
   public async deleteBranch(repoPath: string, name: string, force?: boolean): Promise<void> {
+    if (!Validation.isValidBranchName(name)) {
+      throw new Error(`Invalid branch name: "${name}"`);
+    }
     const args = ['branch', force ? '-D' : '-d', name];
     await this.exec(args, { cwd: repoPath });
   }
 
   public async renameBranch(repoPath: string, oldName: string, newName: string): Promise<void> {
+    if (!Validation.isValidBranchName(oldName) || !Validation.isValidBranchName(newName)) {
+      throw new Error(`Invalid branch name for rename: "${oldName}" -> "${newName}"`);
+    }
     await this.exec(['branch', '-m', oldName, newName], { cwd: repoPath });
   }
 
   public async checkout(repoPath: string, ref: string, createBranch?: boolean): Promise<void> {
-    const args = ['checkout'];
     if (createBranch) {
-      args.push('-b');
+      if (!Validation.isValidBranchName(ref)) {
+        throw new Error(`Invalid branch name: "${ref}"`);
+      }
+      await this.exec(['checkout', '-b', ref], { cwd: repoPath });
+    } else {
+      if (!Validation.isValidRef(ref)) {
+        throw new Error(`Invalid git ref: "${ref}"`);
+      }
+      await this.exec(['checkout', ref], { cwd: repoPath });
     }
-    args.push(ref);
-    await this.exec(args, { cwd: repoPath });
   }
 
   public async switchBranch(repoPath: string, branch: string, create?: boolean): Promise<void> {
+    if (!Validation.isValidBranchName(branch)) {
+      throw new Error(`Invalid branch name: "${branch}"`);
+    }
     const args = ['switch'];
     if (create) {
       args.push('-c');
@@ -194,6 +219,9 @@ export class GitClient {
   }
 
   public async merge(repoPath: string, branch: string, noFastForward?: boolean, squash?: boolean): Promise<string> {
+    if (!Validation.isValidRef(branch)) {
+      throw new Error(`Invalid merge branch/ref: "${branch}"`);
+    }
     const args = ['merge'];
     if (noFastForward) args.push('--no-ff');
     if (squash) args.push('--squash');
@@ -203,25 +231,37 @@ export class GitClient {
   }
 
   public async rebase(repoPath: string, onto: string): Promise<string> {
+    if (!Validation.isValidRef(onto)) {
+      throw new Error(`Invalid rebase ref: "${onto}"`);
+    }
     const args = ['rebase', onto];
     const { stdout } = await this.exec(args, { cwd: repoPath });
     return stdout;
   }
 
-  public async fetch(repoPath: string, remote: string = 'origin', prune?: boolean, tags?: boolean): Promise<string> {
+  public async fetch(repoPath: string, remote: string = 'origin', prune?: boolean, tags?: boolean, options?: GitExecOptions): Promise<string> {
+    if (!Validation.isValidRemoteName(remote)) {
+      throw new Error(`Invalid remote name: "${remote}"`);
+    }
     const args = ['fetch', remote];
     if (prune) args.push('--prune');
     if (tags) args.push('--tags');
-    const { stdout, stderr } = await this.exec(args, { cwd: repoPath });
+    const { stdout, stderr } = await this.exec(args, { cwd: repoPath, ...options });
     return stdout || stderr;
   }
 
-  public async pull(repoPath: string, remote?: string, branch?: string, rebase?: boolean): Promise<string> {
+  public async pull(repoPath: string, remote?: string, branch?: string, rebase?: boolean, options?: GitExecOptions): Promise<string> {
+    if (remote && !Validation.isValidRemoteName(remote)) {
+      throw new Error(`Invalid remote name: "${remote}"`);
+    }
+    if (branch && !Validation.isValidBranchName(branch)) {
+      throw new Error(`Invalid branch name: "${branch}"`);
+    }
     const args = ['pull'];
     if (rebase) args.push('--rebase');
     if (remote) args.push(remote);
     if (branch) args.push(branch);
-    const { stdout, stderr } = await this.exec(args, { cwd: repoPath });
+    const { stdout, stderr } = await this.exec(args, { cwd: repoPath, ...options });
     return stdout || stderr;
   }
 
@@ -232,22 +272,31 @@ export class GitClient {
     setUpstream?: boolean,
     force?: boolean,
     forceWithLease?: boolean,
-    tags?: boolean
+    tags?: boolean,
+    options?: GitExecOptions
   ): Promise<string> {
+    if (!Validation.isValidRemoteName(remote)) {
+      throw new Error(`Invalid remote name: "${remote}"`);
+    }
+    if (branch && !Validation.isValidBranchName(branch)) {
+      throw new Error(`Invalid branch name: "${branch}"`);
+    }
     const args = ['push'];
     if (setUpstream) args.push('-u');
-    if (force) {
-      args.push('--force');
-    } else if (forceWithLease) {
+    // Section 6: Prefer --force-with-lease when both force and forceWithLease are set
+    if (forceWithLease) {
       args.push('--force-with-lease');
+    } else if (force) {
+      args.push('--force');
     }
     if (tags) args.push('--tags');
     args.push(remote);
     if (branch) args.push(branch);
 
-    const { stdout, stderr } = await this.exec(args, { cwd: repoPath });
+    const { stdout, stderr } = await this.exec(args, { cwd: repoPath, ...options });
     return stdout || stderr;
   }
+
 
   public async stash(repoPath: string, message?: string, includeUntracked?: boolean): Promise<string> {
     const args = ['stash', 'push'];
@@ -278,6 +327,12 @@ export class GitClient {
   }
 
   public async createTag(repoPath: string, name: string, target?: string, message?: string): Promise<void> {
+    if (!Validation.isValidTagName(name)) {
+      throw new Error(`Invalid tag name: "${name}"`);
+    }
+    if (target && !Validation.isValidRef(target)) {
+      throw new Error(`Invalid tag target ref: "${target}"`);
+    }
     const args = ['tag'];
     if (message) {
       args.push('-a', name, '-m', message);
@@ -289,6 +344,9 @@ export class GitClient {
   }
 
   public async deleteTag(repoPath: string, name: string): Promise<void> {
+    if (!Validation.isValidTagName(name)) {
+      throw new Error(`Invalid tag name: "${name}"`);
+    }
     await this.exec(['tag', '-d', name], { cwd: repoPath });
   }
 
@@ -303,14 +361,29 @@ export class GitClient {
   }
 
   public async addRemote(repoPath: string, name: string, url: string): Promise<void> {
+    if (!Validation.isValidRemoteName(name)) {
+      throw new Error(`Invalid remote name: "${name}"`);
+    }
+    if (!Validation.isValidGitUrl(url)) {
+      throw new Error(`Invalid remote URL: "${url}"`);
+    }
     await this.exec(['remote', 'add', name, url], { cwd: repoPath });
   }
 
   public async removeRemote(repoPath: string, name: string): Promise<void> {
+    if (!Validation.isValidRemoteName(name)) {
+      throw new Error(`Invalid remote name: "${name}"`);
+    }
     await this.exec(['remote', 'remove', name], { cwd: repoPath });
   }
 
   public async setRemoteUrl(repoPath: string, name: string, url: string, push?: boolean): Promise<void> {
+    if (!Validation.isValidRemoteName(name)) {
+      throw new Error(`Invalid remote name: "${name}"`);
+    }
+    if (!Validation.isValidGitUrl(url)) {
+      throw new Error(`Invalid remote URL: "${url}"`);
+    }
     const args = ['remote', 'set-url'];
     if (push) args.push('--push');
     args.push(name, url);
@@ -336,17 +409,30 @@ export class GitClient {
   }
 
   public async reset(repoPath: string, ref: string, mode: 'soft' | 'mixed' | 'hard'): Promise<void> {
+    if (!Validation.isValidRef(ref)) {
+      throw new Error(`Invalid reset ref: "${ref}"`);
+    }
     const args = ['reset', `--${mode}`, ref];
     await this.exec(args, { cwd: repoPath });
   }
 
-  public async clone(url: string, destinationPath: string, branch?: string, depth?: number): Promise<void> {
+  public async clone(url: string, destinationPath: string, branch?: string, depth?: number, options?: GitExecOptions): Promise<void> {
+    if (!Validation.isValidGitUrl(url)) {
+      throw new Error(`Invalid clone URL: "${url}"`);
+    }
+    if (branch && !Validation.isValidBranchName(branch)) {
+      throw new Error(`Invalid branch name: "${branch}"`);
+    }
+    if (destinationPath.trim().startsWith('-')) {
+      throw new Error(`Invalid destination path: "${destinationPath}"`);
+    }
     const args = ['clone'];
     if (branch) args.push('-b', branch);
     if (depth) args.push('--depth', depth.toString());
     args.push(url, destinationPath);
-    await this.exec(args);
+    await this.exec(args, options);
   }
+
 
   public async init(repoPath: string, bare?: boolean): Promise<void> {
     const args = ['init'];

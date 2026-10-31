@@ -92,9 +92,12 @@ describe('Profile Credentials & Remote Synchronization', () => {
     assert.strictEqual(globalConfigs.get('credential.https://github.com.username'), 'mshrnth');
   });
 
-  it('2. PAT Token Authentication: should set AUTHORIZATION basic extraheader when PAT exists and unset when switching away', async () => {
+  it('2. PAT Token Authentication: should NOT persist PAT extraheader to git config and should unset any leftover extraheader', async () => {
     const repoPath = 'C:/repos/project-2';
     const testPat = 'ghp_secretTokenABC123';
+
+    // Seed a leftover extraheader to verify it gets cleaned
+    localConfigs.set('http.https://github.com/.extraheader', 'AUTHORIZATION: basic oldtoken');
 
     const patProfile = await profileManager.createProfile(
       {
@@ -108,8 +111,9 @@ describe('Profile Credentials & Remote Synchronization', () => {
 
     await profileManager.switchProfile(patProfile.id, repoPath);
 
-    const expectedHeaderValue = `AUTHORIZATION: basic ${Buffer.from('patuser:' + testPat).toString('base64')}`;
-    assert.strictEqual(localConfigs.get('http.https://github.com/.extraheader'), expectedHeaderValue);
+    // Section 1: Never persist PATs to .git/config
+    assert.strictEqual(localConfigs.has('http.https://github.com/.extraheader'), false);
+    assert.strictEqual(localConfigs.has('http.extraheader'), false);
 
     // Switch to profile without PAT
     const noPatProfile = await profileManager.createProfile({
@@ -122,6 +126,7 @@ describe('Profile Credentials & Remote Synchronization', () => {
     await profileManager.switchProfile(noPatProfile.id, repoPath);
     assert.strictEqual(localConfigs.has('http.https://github.com/.extraheader'), false);
   });
+
 
   it('3. SSH Key Alignment: should configure core.sshCommand when sshKeyPath is provided and unset for non-SSH', async () => {
     const repoPath = 'C:/repos/project-3';

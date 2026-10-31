@@ -1,3 +1,5 @@
+import { Validation } from './validation';
+
 export class Logger {
   private static instance: Logger;
   private prefix = '[GitAxis]';
@@ -10,13 +12,9 @@ export class Logger {
   }
 
   private sanitize(message: string): string {
-    // Redact tokens, PATs, bearer tokens
-    return message
-      .replace(/ghp_[A-Za-z0-9_]{36,}/g, 'ghp_***[REDACTED]')
-      .replace(/github_pat_[A-Za-z0-9_]{40,}/g, 'github_pat_***[REDACTED]')
-      .replace(/Bearer\s+[A-Za-z0-9._~+/-]+=*/gi, 'Bearer ***[REDACTED]')
-      .replace(/password[:=]\s*[^\s,]+/gi, 'password=***[REDACTED]');
+    return Validation.sanitizeUrl(message);
   }
+
 
   public info(message: string, ...args: unknown[]): void {
     console.log(`${this.prefix} ${this.sanitize(message)}`, ...args);

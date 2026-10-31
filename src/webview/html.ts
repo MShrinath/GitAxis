@@ -30,6 +30,13 @@ export interface WebviewState {
   scanPerformed?: boolean;
 }
 
+export interface HtmlRenderOptions {
+  cspSource?: string;
+  scriptUri?: string;
+  styleUri?: string;
+  nonce?: string;
+}
+
 function escapeHtml(str?: string): string {
   if (!str) return '';
   return String(str)
@@ -38,21 +45,6 @@ function escapeHtml(str?: string): string {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
-}
-
-function escapeJs(str?: string): string {
-  if (!str) return '';
-  return String(str).replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '\\"');
-}
-
-function escapeJsAttr(str?: string): string {
-  if (!str) return '';
-  return String(str)
-    .replace(/\\/g, '\\\\')
-    .replace(/'/g, "\\'")
-    .replace(/"/g, '&quot;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
 }
 
 const Icons = {
@@ -72,17 +64,35 @@ const Icons = {
 };
 
 export class HtmlBuilder {
-  public static render(state: WebviewState, cspSource?: string): string {
+  public static render(
+    state: WebviewState,
+    cspSourceOrOptions?: string | HtmlRenderOptions,
+    scriptUriParam?: string,
+    styleUriParam?: string,
+    nonceParam?: string
+  ): string {
     const profile = state.profile;
     const repo = state.repository;
     const match = state.matchResult;
     const profiles = state.profiles || [];
     const discovered = state.discoveredAccounts || [];
-    const linkedProfileId = state.linkedProfileId;
     const repoUrl = state.repoUrl;
 
-    const baseCsp = cspSource || "'self'";
-    const fullCsp = `${baseCsp} 'unsafe-inline'`;
+    let cspSource = "'self'";
+    let scriptUri = 'media/main.js';
+    let styleUri = 'media/main.css';
+    let nonce = nonceParam || 'gitaxis-nonce-secure';
+
+    if (typeof cspSourceOrOptions === 'string') {
+      cspSource = cspSourceOrOptions;
+      if (scriptUriParam) scriptUri = scriptUriParam;
+      if (styleUriParam) styleUri = styleUriParam;
+    } else if (cspSourceOrOptions && typeof cspSourceOrOptions === 'object') {
+      if (cspSourceOrOptions.cspSource) cspSource = cspSourceOrOptions.cspSource;
+      if (cspSourceOrOptions.scriptUri) scriptUri = cspSourceOrOptions.scriptUri;
+      if (cspSourceOrOptions.styleUri) styleUri = cspSourceOrOptions.styleUri;
+      if (cspSourceOrOptions.nonce) nonce = cspSourceOrOptions.nonce;
+    }
 
     const hasGithub = Boolean(profile?.github?.username);
     const profileName = profile ? escapeHtml(profile.name) : 'No Active Profile';
@@ -103,453 +113,36 @@ export class HtmlBuilder {
         )})</span>`
       : `<span class="badge badge-muted">No remote match detected</span>`;
 
-    const profilesJson = JSON.stringify(profiles).replace(/</g, '\\u003c');
+    // Ensure profiles data NEVER contains raw secrets before serializing
+    const sanitizedProfiles = profiles.map(p => ({
+      ...p,
+      authentication: {
+        type: p.authentication.type,
+        source: p.authentication.source,
+        sshKeyPath: p.authentication.sshKeyPath,
+      },
+    }));
+
+    const profilesJson = JSON.stringify(sanitizedProfiles).replace(/</g, '\\u003c');
     const discoveredJson = JSON.stringify(discovered).replace(/</g, '\\u003c');
 
     return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta http-equiv="Content-Security-Policy" content="default-src ${fullCsp}; style-src ${fullCsp}; script-src ${fullCsp};">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${cspSource} 'nonce-${nonce}'; script-src 'nonce-${nonce}'; img-src ${cspSource} https: data:; font-src ${cspSource};">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>GitAxis Control Center</title>
-  <style>
-    :root {
-      --bg: var(--vscode-sideBar-background, #181818);
-      --fg: var(--vscode-sideBar-foreground, #cccccc);
-      --card-bg: var(--vscode-editor-background, #1f1f1f);
-      --card-border: var(--vscode-widget-border, rgba(255, 255, 255, 0.08));
-      --btn-bg: var(--vscode-button-background, #0078d4);
-      --btn-fg: var(--vscode-button-foreground, #ffffff);
-      --btn-hover: var(--vscode-button-hoverBackground, #026ec1);
-      --btn-sec-bg: var(--vscode-button-secondaryBackground, rgba(255, 255, 255, 0.08));
-      --btn-sec-fg: var(--vscode-button-secondaryForeground, #cccccc);
-      --btn-sec-hover: var(--vscode-button-secondaryHoverBackground, rgba(255, 255, 255, 0.14));
-      --input-bg: var(--vscode-input-background, #2a2a2a);
-      --input-fg: var(--vscode-input-foreground, #cccccc);
-      --input-border: var(--vscode-input-border, rgba(255, 255, 255, 0.12));
-      --focus-border: var(--vscode-focusBorder, #0078d4);
-      --badge-success-bg: rgba(46, 164, 79, 0.2);
-      --badge-success-fg: var(--vscode-gitDecoration-addedResourceForeground, #4ec9b0);
-      --badge-warning-bg: rgba(210, 153, 34, 0.2);
-      --badge-warning-fg: var(--vscode-gitDecoration-modifiedResourceForeground, #cca700);
-      --badge-info-bg: rgba(56, 139, 253, 0.18);
-      --badge-info-fg: var(--vscode-textLink-foreground, #4daafc);
-      --badge-muted-bg: rgba(255, 255, 255, 0.06);
-      --badge-muted-fg: var(--vscode-descriptionForeground, #888888);
-      --error-fg: var(--vscode-errorForeground, #f48771);
-      --subtext: var(--vscode-descriptionForeground, #999999);
-    }
-    * {
-      box-sizing: border-box;
-    }
-    body {
-      font-family: var(--vscode-font-family, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif);
-      font-size: var(--vscode-font-size, 12px);
-      color: var(--fg);
-      background-color: var(--bg);
-      margin: 0;
-      padding: 10px 12px 24px;
-      line-height: 1.45;
-    }
-    .header-bar {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 12px;
-      padding-bottom: 8px;
-      border-bottom: 1px solid var(--card-border);
-    }
-    .brand-title {
-      font-size: 11px;
-      font-weight: 700;
-      letter-spacing: 0.8px;
-      text-transform: uppercase;
-      color: var(--fg);
-      display: flex;
-      align-items: center;
-      gap: 6px;
-    }
-    .brand-pill {
-      font-size: 9px;
-      font-weight: 600;
-      letter-spacing: 0.3px;
-      padding: 1px 5px;
-      border-radius: 10px;
-      background: var(--badge-info-bg);
-      color: var(--badge-info-fg);
-      text-transform: uppercase;
-    }
-    .icon-btn-ghost {
-      background: transparent;
-      border: 1px solid transparent;
-      color: var(--subtext);
-      border-radius: 4px;
-      cursor: pointer;
-      padding: 3px 6px;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      transition: all 0.15s ease;
-    }
-    .icon-btn-ghost:hover {
-      background: var(--btn-sec-bg);
-      color: var(--fg);
-    }
-    .section {
-      margin-bottom: 14px;
-    }
-    .section-title-row {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 6px;
-    }
-    .section-title {
-      font-size: 10px;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 0.7px;
-      color: var(--subtext);
-    }
-    .card {
-      background: var(--card-bg);
-      border: 1px solid var(--card-border);
-      border-radius: 6px;
-      padding: 10px;
-      margin-bottom: 8px;
-      transition: border-color 0.15s ease;
-    }
-    .card-active-identity {
-      border-left: 3px solid var(--badge-success-fg);
-    }
-    .card-header-row {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      gap: 6px;
-    }
-    .card-title-group {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      font-weight: 600;
-      font-size: 12px;
-      color: var(--fg);
-    }
-    .status-dot {
-      width: 7px;
-      height: 7px;
-      border-radius: 50%;
-      display: inline-block;
-      flex-shrink: 0;
-    }
-    .dot-active {
-      background: #2ea44f;
-      box-shadow: 0 0 0 2px rgba(46, 164, 79, 0.25);
-    }
-    .dot-inactive {
-      background: rgba(255, 255, 255, 0.25);
-    }
-    .badge {
-      display: inline-flex;
-      align-items: center;
-      gap: 4px;
-      padding: 1px 6px;
-      border-radius: 4px;
-      font-size: 10px;
-      font-weight: 500;
-      line-height: 1.3;
-    }
-    .badge-success {
-      background: var(--badge-success-bg);
-      color: var(--badge-success-fg);
-      border: 1px solid rgba(78, 201, 176, 0.25);
-    }
-    .badge-warning {
-      background: var(--badge-warning-bg);
-      color: var(--badge-warning-fg);
-      border: 1px solid rgba(204, 167, 0, 0.25);
-    }
-    .badge-info {
-      background: var(--badge-info-bg);
-      color: var(--badge-info-fg);
-      border: 1px solid rgba(77, 170, 252, 0.25);
-    }
-    .badge-muted {
-      background: var(--badge-muted-bg);
-      color: var(--badge-muted-fg);
-      border: 1px solid rgba(255, 255, 255, 0.08);
-    }
-    .meta-list {
-      margin-top: 8px;
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-      font-size: 11px;
-    }
-    .meta-item {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      color: var(--fg);
-      word-break: break-all;
-    }
-    .meta-item .sub {
-      color: var(--subtext);
-    }
-    .icon {
-      display: inline-block;
-      vertical-align: middle;
-      flex-shrink: 0;
-    }
-    .icon-muted {
-      color: var(--subtext);
-    }
-    .repo-box {
-      background: var(--card-bg);
-      border: 1px solid var(--card-border);
-      border-radius: 6px;
-      padding: 8px 10px;
-      margin-top: 6px;
-    }
-    .repo-main-row {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      gap: 6px;
-    }
-    .repo-title-wrapper {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      font-weight: 600;
-      font-size: 11px;
-    }
-    .btn-link-action {
-      background: transparent;
-      border: none;
-      color: var(--badge-info-fg);
-      cursor: pointer;
-      font-size: 11px;
-      padding: 2px 4px;
-      border-radius: 3px;
-      display: inline-flex;
-      align-items: center;
-      gap: 4px;
-      text-decoration: none;
-    }
-    .btn-link-action:hover {
-      background: var(--btn-sec-bg);
-      text-decoration: underline;
-    }
-    .branch-row {
-      margin-top: 4px;
-      display: flex;
-      align-items: center;
-      gap: 5px;
-      font-size: 11px;
-      color: var(--subtext);
-    }
-    .btn {
-      background: var(--btn-bg);
-      color: var(--btn-fg);
-      border: none;
-      padding: 4px 10px;
-      border-radius: 3px;
-      cursor: pointer;
-      font-size: 11px;
-      font-weight: 500;
-      text-align: center;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      gap: 5px;
-      transition: background-color 0.12s ease;
-      line-height: 1.4;
-    }
-    .btn:hover {
-      background: var(--btn-hover);
-    }
-    .btn-secondary {
-      background: var(--btn-sec-bg);
-      color: var(--btn-sec-fg);
-      border: 1px solid var(--card-border);
-    }
-    .btn-secondary:hover {
-      background: var(--btn-sec-hover);
-      color: var(--fg);
-    }
-    .btn-danger {
-      background: transparent;
-      color: var(--error-fg);
-      border: 1px solid rgba(244, 135, 113, 0.3);
-    }
-    .btn-danger:hover {
-      background: rgba(244, 135, 113, 0.15);
-      border-color: var(--error-fg);
-    }
-    .btn-sm {
-      padding: 3px 8px;
-      font-size: 11px;
-      border-radius: 3px;
-    }
-    .btn-xs {
-      background: var(--btn-sec-bg);
-      color: var(--btn-sec-fg);
-      border: 1px solid var(--card-border);
-      padding: 2px 6px;
-      border-radius: 3px;
-      font-size: 10px;
-      cursor: pointer;
-      display: inline-flex;
-      align-items: center;
-      gap: 4px;
-    }
-    .btn-xs:hover {
-      background: var(--btn-sec-hover);
-      color: var(--fg);
-    }
-    .btn-scan-bar {
-      width: 100%;
-      background: var(--btn-sec-bg);
-      color: var(--btn-sec-fg);
-      border: 1px solid var(--card-border);
-      padding: 6px 10px;
-      font-size: 11px;
-      font-weight: 500;
-      cursor: pointer;
-      border-radius: 4px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 6px;
-      transition: all 0.12s ease;
-    }
-    .btn-scan-bar:hover {
-      background: var(--btn-sec-hover);
-      color: var(--fg);
-      border-color: rgba(255, 255, 255, 0.2);
-    }
-    .btn-group {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 4px;
-      margin-top: 8px;
-    }
-    .hint-text {
-      font-size: 11px;
-      color: var(--subtext);
-      margin-top: 4px;
-      line-height: 1.35;
-    }
-    .discovered-item {
-      background: var(--card-bg);
-      border: 1px solid var(--card-border);
-      border-left: 3px solid var(--focus-border);
-      border-radius: 4px;
-      padding: 8px;
-      margin-top: 6px;
-    }
-    .discovered-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      font-size: 11px;
-      font-weight: 600;
-    }
-    .source-tag {
-      font-size: 9px;
-      padding: 1px 4px;
-      border-radius: 3px;
-      background: rgba(255, 255, 255, 0.08);
-      color: var(--subtext);
-      text-transform: uppercase;
-      letter-spacing: 0.3px;
-    }
-    .form-box {
-      background: var(--card-bg);
-      border: 1px solid var(--card-border);
-      border-radius: 6px;
-      padding: 10px;
-      margin-top: 6px;
-    }
-    .form-group {
-      margin-bottom: 8px;
-    }
-    .form-label {
-      display: block;
-      font-size: 11px;
-      font-weight: 500;
-      margin-bottom: 3px;
-      color: var(--fg);
-    }
-    .form-label .req {
-      color: var(--error-fg);
-    }
-    .form-label .opt {
-      color: var(--subtext);
-      font-weight: 400;
-      font-size: 10px;
-    }
-    .input-text {
-      width: 100%;
-      background: var(--input-bg);
-      color: var(--input-fg);
-      border: 1px solid var(--input-border);
-      border-radius: 3px;
-      padding: 4px 7px;
-      font-size: 12px;
-      outline: none;
-      transition: border-color 0.12s ease;
-    }
-    .input-text:focus {
-      border-color: var(--focus-border);
-    }
-    .pat-row {
-      display: flex;
-      gap: 4px;
-    }
-    .radio-deck {
-      display: flex;
-      gap: 12px;
-      margin-top: 3px;
-    }
-    .radio-item {
-      font-size: 11px;
-      display: inline-flex;
-      align-items: center;
-      gap: 5px;
-      cursor: pointer;
-      color: var(--fg);
-    }
-    .form-actions-row {
-      display: flex;
-      gap: 6px;
-      margin-top: 10px;
-    }
-    .form-actions-row .btn {
-      flex: 1;
-    }
-    .banner-error {
-      background: rgba(244, 135, 113, 0.12);
-      border: 1px solid rgba(244, 135, 113, 0.4);
-      color: var(--error-fg);
-      font-size: 11px;
-      padding: 6px 8px;
-      border-radius: 3px;
-      margin-bottom: 8px;
-    }
-  </style>
+  <link rel="stylesheet" href="${escapeHtml(styleUri)}" nonce="${nonce}">
 </head>
 <body>
   <!-- HEADER -->
   <div class="header-bar">
     <div class="brand-title">
       <span>GitAxis Control Center</span>
-      <span class="brand-pill">v0.3.0</span>
+      <span class="brand-pill">v0.4.0</span>
     </div>
-    <button type="button" class="icon-btn-ghost" title="Refresh state" onclick="sendCmd('refresh')">
+    <button type="button" class="icon-btn-ghost" title="Refresh state" data-action="refresh">
       ${Icons.refresh}
     </button>
   </div>
@@ -586,7 +179,7 @@ export class HtmlBuilder {
         </div>
         ${
           repoUrl
-            ? `<button type="button" class="btn-link-action" title="Open repository on GitHub" onclick="openRepoInBrowser('${escapeJsAttr(repoUrl)}')">
+            ? `<button type="button" class="btn-link-action" title="Open repository on GitHub" data-action="openRepo" data-url="${escapeHtml(repoUrl)}">
                 <span>Open on GitHub</span>
                 ${Icons.externalLink}
               </button>`
@@ -597,10 +190,10 @@ export class HtmlBuilder {
         ${Icons.branch}
         <span>Branch: <strong>${currentBranch}</strong></span>
       </div>
-      <div style="margin-top: 6px;">${matchBadge}</div>
+      <div class="match-badge-wrap">${matchBadge}</div>
       ${
         match && match.confidence !== 'none' && match.recommendedProfileId !== profile?.id
-          ? `<button type="button" class="btn btn-secondary btn-sm" style="margin-top: 6px; width: 100%;" onclick="sendCmd('useRecommended')">Switch to Suggested Profile</button>`
+          ? `<button type="button" class="btn btn-secondary btn-sm switch-suggested-btn" data-action="useRecommended">Switch to Suggested Profile</button>`
           : ''
       }
     </div>
@@ -611,13 +204,13 @@ export class HtmlBuilder {
     <div class="section-title-row">
       <span class="section-title">SYSTEM ACCOUNT SCANNER</span>
     </div>
-    <button type="button" class="btn-scan-bar" onclick="scanAccounts()">
+    <button type="button" class="btn-scan-bar" data-action="scanAccounts">
       ${Icons.search}
       <span>Scan Local Git &amp; GitHub CLI Accounts</span>
     </button>
     ${
       discovered.length > 0
-        ? `<div style="display: flex; flex-direction: column; gap: 6px; margin-top: 6px;">
+        ? `<div class="discovered-deck">
             ${discovered
               .map(
                 (acc, idx) => `
@@ -629,8 +222,8 @@ export class HtmlBuilder {
                 <div class="hint-text">${escapeHtml(acc.git.name)} &lt;${escapeHtml(acc.git.email)}&gt;</div>
                 ${acc.github ? `<div class="hint-text">Host: ${escapeHtml(acc.github.host)}</div>` : ''}
                 <div class="btn-group">
-                  <button type="button" class="btn btn-sm" onclick="importDiscoveredAccount(${idx})">+ Import as Profile</button>
-                  <button type="button" class="btn btn-sm btn-secondary" onclick="fillFormWithAccount(${idx})">Fill Form</button>
+                  <button type="button" class="btn btn-sm" data-action="importDiscoveredAccount" data-index="${idx}">+ Import as Profile</button>
+                  <button type="button" class="btn btn-sm btn-secondary" data-action="fillForm" data-index="${idx}">Fill Form</button>
                 </div>
               </div>`
               )
@@ -646,7 +239,7 @@ export class HtmlBuilder {
   <div class="section">
     <div class="section-title-row">
       <span class="section-title">PROFILES (${profiles.length})</span>
-      <button type="button" class="btn-xs" onclick="startNewProfile()">
+      <button type="button" class="btn-xs" data-action="startNewProfile">
         ${Icons.plus} Add Profile
       </button>
     </div>
@@ -656,10 +249,9 @@ export class HtmlBuilder {
         : profiles
             .map(p => {
               const isActive = profile?.id === p.id;
-              const isLinked = linkedProfileId === p.id;
-              const hasRepo = !!repo;
+              const authText = p.authentication.type === 'pat' ? 'PAT (token saved)' : p.authentication.type;
               return `
-      <div class="card" style="${isActive ? 'border-left: 3px solid var(--badge-success-fg);' : ''}">
+      <div class="card ${isActive ? 'card-active-identity' : ''}">
         <div class="card-header-row">
           <div class="card-title-group">
             <span class="status-dot ${isActive ? 'dot-active' : 'dot-inactive'}"></span>
@@ -680,13 +272,13 @@ export class HtmlBuilder {
           </div>
           <div class="meta-item">
             ${Icons.link}
-            <span class="sub">Scope: ${escapeHtml(p.git.scope || 'local')} · Auth: ${escapeHtml(p.authentication.type)}</span>
+            <span class="sub">Scope: ${escapeHtml(p.git.scope || 'local')} · Auth: ${escapeHtml(authText)}</span>
           </div>
         </div>
         <div class="btn-group">
-          ${!isActive ? `<button type="button" class="btn btn-sm" onclick="switchProfile('${escapeJsAttr(p.id)}')">Switch</button>` : ''}
-          <button type="button" class="btn btn-sm btn-secondary" onclick="editProfile('${escapeJsAttr(p.id)}')">Edit</button>
-          <button type="button" class="btn btn-sm btn-danger" onclick="deleteProfile('${escapeJsAttr(p.id)}')">Delete</button>
+          ${!isActive ? `<button type="button" class="btn btn-sm" data-action="switchProfile" data-profile-id="${escapeHtml(p.id)}">Switch</button>` : ''}
+          <button type="button" class="btn btn-sm btn-secondary" data-action="editProfile" data-profile-id="${escapeHtml(p.id)}">Edit</button>
+          <button type="button" class="btn btn-sm btn-danger" data-action="deleteProfile" data-profile-id="${escapeHtml(p.id)}">Delete</button>
         </div>
       </div>`;
             })
@@ -695,12 +287,12 @@ export class HtmlBuilder {
   </div>
 
   <!-- IN-SIDEBAR PERSISTENT PROFILE FORM -->
-  <div class="section" id="profile-form-section" style="border-bottom: none;">
+  <div class="section form-section-noborder" id="profile-form-section">
     <div class="section-title-row">
       <span class="section-title" id="form-title">CREATE / EDIT PROFILE</span>
     </div>
     <div class="form-box">
-      <div id="form-error-msg" class="banner-error" style="display: none;"></div>
+      <div id="form-error-msg" class="banner-error hidden"></div>
       <input type="hidden" id="form-profile-id" value="" />
       
       <div class="form-group">
@@ -732,9 +324,9 @@ export class HtmlBuilder {
         <label class="form-label" for="form-pat">Personal Access Token (PAT) <span class="opt">(optional)</span></label>
         <div class="pat-row">
           <input type="password" id="form-pat" class="input-text" placeholder="ghp_xxxxxxxxxxxx" autocomplete="off" />
-          <button type="button" id="btn-toggle-pat" class="btn btn-secondary btn-sm" onclick="togglePatVisibility()">Show</button>
+          <button type="button" id="btn-toggle-pat" class="btn btn-secondary btn-sm" data-action="togglePat">Show</button>
         </div>
-        <div class="hint-text" style="font-size: 10px; margin-top: 3px;">Stored securely in VS Code SecretStorage. Inputs are persistent across tab switches.</div>
+        <div class="hint-text pat-hint">Stored securely in VS Code SecretStorage. Inputs are persistent across tab switches.</div>
       </div>
 
       <div class="form-group">
@@ -752,288 +344,15 @@ export class HtmlBuilder {
       </div>
 
       <div class="form-actions-row">
-        <button type="button" class="btn" id="form-submit-btn" onclick="saveProfileForm()">Save Profile</button>
-        <button type="button" class="btn btn-secondary" onclick="cancelProfileForm()">Cancel</button>
+        <button type="button" class="btn" id="form-submit-btn" data-action="saveProfileForm">Save Profile</button>
+        <button type="button" class="btn btn-secondary" data-action="cancelProfileForm">Cancel</button>
       </div>
     </div>
   </div>
 
-  <script>
-    const vscode = acquireVsCodeApi();
-    const profilesData = ${profilesJson};
-    const discoveredData = ${discoveredJson};
-
-    function sendCmd(cmd, payload) {
-      vscode.postMessage({ command: cmd, ...(payload || {}) });
-    }
-
-    function showFormError(msg) {
-      const errEl = document.getElementById('form-error-msg');
-      if (errEl) {
-        errEl.innerText = msg;
-        errEl.style.display = 'block';
-      }
-    }
-
-    function hideFormError() {
-      const errEl = document.getElementById('form-error-msg');
-      if (errEl) {
-        errEl.style.display = 'none';
-      }
-    }
-
-    function saveCurrentFormToState() {
-      try {
-        const currentState = vscode.getState() || {};
-        const scopeEl = document.querySelector('input[name="form-scope"]:checked');
-        const formState = {
-          id: document.getElementById('form-profile-id')?.value || '',
-          name: document.getElementById('form-name')?.value || '',
-          gitName: document.getElementById('form-git-name')?.value || '',
-          gitEmail: document.getElementById('form-git-email')?.value || '',
-          githubUsername: document.getElementById('form-gh-user')?.value || '',
-          host: document.getElementById('form-host')?.value || 'github.com',
-          pat: document.getElementById('form-pat')?.value || '',
-          scope: scopeEl ? scopeEl.value : 'local',
-          title: document.getElementById('form-title')?.innerText || 'CREATE / EDIT PROFILE',
-          submitBtnText: document.getElementById('form-submit-btn')?.innerText || 'Save Profile',
-        };
-        vscode.setState({ ...currentState, form: formState });
-      } catch (e) {
-        console.error('Failed to save form state:', e);
-      }
-    }
-
-    function restoreFormFromState() {
-      try {
-        const state = vscode.getState();
-        if (!state || !state.form) return;
-        const f = state.form;
-        if (f.name || f.gitName || f.gitEmail || f.githubUsername || f.pat || f.id) {
-          if (document.getElementById('form-profile-id')) document.getElementById('form-profile-id').value = f.id || '';
-          if (document.getElementById('form-name')) document.getElementById('form-name').value = f.name || '';
-          if (document.getElementById('form-git-name')) document.getElementById('form-git-name').value = f.gitName || '';
-          if (document.getElementById('form-git-email')) document.getElementById('form-git-email').value = f.gitEmail || '';
-          if (document.getElementById('form-gh-user')) document.getElementById('form-gh-user').value = f.githubUsername || '';
-          if (document.getElementById('form-host')) document.getElementById('form-host').value = f.host || 'github.com';
-          if (document.getElementById('form-pat')) document.getElementById('form-pat').value = f.pat || '';
-          if (f.scope) {
-            const radio = document.querySelector('input[name="form-scope"][value="' + f.scope + '"]');
-            if (radio) radio.checked = true;
-          }
-          if (f.title && document.getElementById('form-title')) {
-            document.getElementById('form-title').innerText = f.title;
-          }
-          if (f.submitBtnText && document.getElementById('form-submit-btn')) {
-            document.getElementById('form-submit-btn').innerText = f.submitBtnText;
-          }
-        }
-      } catch (e) {
-        console.error('Failed to restore form state:', e);
-      }
-    }
-
-    // Attach listeners for persistent input caching
-    ['form-name', 'form-git-name', 'form-git-email', 'form-gh-user', 'form-host', 'form-pat'].forEach(function(id) {
-      const el = document.getElementById(id);
-      if (el) {
-        el.addEventListener('input', saveCurrentFormToState);
-      }
-    });
-    document.querySelectorAll('input[name="form-scope"]').forEach(function(el) {
-      el.addEventListener('change', saveCurrentFormToState);
-    });
-
-    function saveProfileForm() {
-      hideFormError();
-      const id = (document.getElementById('form-profile-id')?.value || '').trim();
-      const name = (document.getElementById('form-name')?.value || '').trim();
-      const gitName = (document.getElementById('form-git-name')?.value || '').trim();
-      const gitEmail = (document.getElementById('form-git-email')?.value || '').trim();
-      const githubUsername = (document.getElementById('form-gh-user')?.value || '').trim();
-      const host = (document.getElementById('form-host')?.value || '').trim() || 'github.com';
-      const pat = (document.getElementById('form-pat')?.value || '').trim();
-      const scopeEl = document.querySelector('input[name="form-scope"]:checked');
-      const scope = scopeEl ? scopeEl.value : 'local';
-
-      if (!name) {
-        showFormError('Profile Name is required.');
-        return;
-      }
-      if (!gitName) {
-        showFormError('Git Author Name is required.');
-        return;
-      }
-      if (!gitEmail || !gitEmail.includes('@')) {
-        showFormError('A valid Git Email is required.');
-        return;
-      }
-
-      const submitBtn = document.getElementById('form-submit-btn');
-      if (submitBtn) {
-        submitBtn.disabled = true;
-        submitBtn.innerText = 'Saving...';
-      }
-
-      saveCurrentFormToState();
-
-      if (id) {
-        vscode.postMessage({
-          command: 'updateProfileFromForm',
-          data: { id, name, gitName, gitEmail, githubUsername, host, pat, scope }
-        });
-      } else {
-        vscode.postMessage({
-          command: 'createProfileFromForm',
-          data: { name, gitName, gitEmail, githubUsername, host, pat, scope }
-        });
-      }
-    }
-
-    function cancelProfileForm() {
-      hideFormError();
-      if (document.getElementById('form-profile-id')) document.getElementById('form-profile-id').value = '';
-      if (document.getElementById('form-name')) document.getElementById('form-name').value = '';
-      if (document.getElementById('form-git-name')) document.getElementById('form-git-name').value = '';
-      if (document.getElementById('form-git-email')) document.getElementById('form-git-email').value = '';
-      if (document.getElementById('form-gh-user')) document.getElementById('form-gh-user').value = '';
-      if (document.getElementById('form-host')) document.getElementById('form-host').value = 'github.com';
-      if (document.getElementById('form-pat')) document.getElementById('form-pat').value = '';
-      const radio = document.querySelector('input[name="form-scope"][value="local"]');
-      if (radio) radio.checked = true;
-      if (document.getElementById('form-title')) document.getElementById('form-title').innerText = 'CREATE / EDIT PROFILE';
-      const submitBtn = document.getElementById('form-submit-btn');
-      if (submitBtn) {
-        submitBtn.disabled = false;
-        submitBtn.innerText = 'Save Profile';
-      }
-      const currentState = vscode.getState() || {};
-      vscode.setState({ ...currentState, form: null });
-    }
-
-    function editProfile(id) {
-      hideFormError();
-      const p = profilesData.find(item => item.id === id);
-      if (!p) return;
-      if (document.getElementById('form-profile-id')) document.getElementById('form-profile-id').value = p.id;
-      if (document.getElementById('form-name')) document.getElementById('form-name').value = p.name;
-      if (document.getElementById('form-git-name')) document.getElementById('form-git-name').value = p.git.name;
-      if (document.getElementById('form-git-email')) document.getElementById('form-git-email').value = p.git.email;
-      if (document.getElementById('form-gh-user')) document.getElementById('form-gh-user').value = p.github?.username || '';
-      if (document.getElementById('form-host')) document.getElementById('form-host').value = p.github?.host || 'github.com';
-      if (document.getElementById('form-pat')) document.getElementById('form-pat').value = '';
-      const scopeVal = p.git.scope || 'local';
-      const radio = document.querySelector('input[name="form-scope"][value="' + scopeVal + '"]');
-      if (radio) radio.checked = true;
-
-      if (document.getElementById('form-title')) {
-        document.getElementById('form-title').innerText = 'EDIT PROFILE: ' + p.name;
-      }
-      if (document.getElementById('form-submit-btn')) {
-        document.getElementById('form-submit-btn').innerText = 'Update Profile';
-      }
-      saveCurrentFormToState();
-      const formEl = document.getElementById('profile-form-section');
-      if (formEl) formEl.scrollIntoView({ behavior: 'smooth' });
-    }
-
-    function fillFormWithAccount(index) {
-      hideFormError();
-      const acc = discoveredData[index];
-      if (!acc) return;
-      if (document.getElementById('form-profile-id')) document.getElementById('form-profile-id').value = '';
-      if (document.getElementById('form-name')) document.getElementById('form-name').value = acc.name || '';
-      if (document.getElementById('form-git-name')) document.getElementById('form-git-name').value = acc.git?.name || '';
-      if (document.getElementById('form-git-email')) document.getElementById('form-git-email').value = acc.git?.email || '';
-      if (document.getElementById('form-gh-user')) document.getElementById('form-gh-user').value = acc.github?.username || '';
-      if (document.getElementById('form-host')) document.getElementById('form-host').value = acc.github?.host || 'github.com';
-      if (document.getElementById('form-pat')) document.getElementById('form-pat').value = '';
-      const radio = document.querySelector('input[name="form-scope"][value="local"]');
-      if (radio) radio.checked = true;
-
-      if (document.getElementById('form-title')) {
-        document.getElementById('form-title').innerText = 'IMPORT PROFILE: ' + (acc.name || 'Account');
-      }
-      if (document.getElementById('form-submit-btn')) {
-        document.getElementById('form-submit-btn').innerText = 'Save Profile';
-      }
-      saveCurrentFormToState();
-      const formEl = document.getElementById('profile-form-section');
-      if (formEl) formEl.scrollIntoView({ behavior: 'smooth' });
-    }
-
-    function startNewProfile() {
-      cancelProfileForm();
-      const formEl = document.getElementById('profile-form-section');
-      if (formEl) formEl.scrollIntoView({ behavior: 'smooth' });
-      const nameInput = document.getElementById('form-name');
-      if (nameInput) nameInput.focus();
-    }
-
-    function togglePatVisibility() {
-      const input = document.getElementById('form-pat');
-      const btn = document.getElementById('btn-toggle-pat');
-      if (!input || !btn) return;
-      if (input.type === 'password') {
-        input.type = 'text';
-        btn.innerText = 'Hide';
-      } else {
-        input.type = 'password';
-        btn.innerText = 'Show';
-      }
-    }
-
-    function switchProfile(id) {
-      vscode.postMessage({ command: 'switchProfile', profileId: id });
-    }
-
-    function deleteProfile(id, name) {
-      const p = profilesData.find(item => item.id === id);
-      const profileName = p ? p.name : (name || '');
-      vscode.postMessage({ command: 'deleteProfile', profileId: id, name: profileName });
-    }
-
-    function scanAccounts() {
-      vscode.postMessage({ command: 'scanAccounts' });
-    }
-
-    function importDiscoveredAccount(index) {
-      vscode.postMessage({ command: 'importDiscoveredAccount', index: index });
-    }
-
-    function openRepoInBrowser(url) {
-      if (url) {
-        vscode.postMessage({ command: 'openInBrowser', url: url });
-      } else {
-        vscode.postMessage({ command: 'openGitHubRepo' });
-      }
-    }
-
-    // Message listener for extension backend responses
-    window.addEventListener('message', function(event) {
-      const msg = event.data;
-      if (!msg) return;
-      if (msg.command === 'saveSuccess') {
-        cancelProfileForm();
-      } else if (msg.command === 'saveError') {
-        const submitBtn = document.getElementById('form-submit-btn');
-        if (submitBtn) {
-          submitBtn.disabled = false;
-          const id = document.getElementById('form-profile-id')?.value;
-          submitBtn.innerText = id ? 'Update Profile' : 'Save Profile';
-        }
-        showFormError(msg.error || 'Failed to save profile.');
-      } else if (msg.command === 'profileDeleted') {
-        const currentId = document.getElementById('form-profile-id')?.value;
-        if (currentId === msg.profileId) {
-          cancelProfileForm();
-        }
-      }
-    });
-
-    // Restore any previously typed form fields
-    restoreFormFromState();
-  </script>
+  <script id="gitaxis-profiles" type="application/json" nonce="${nonce}">${profilesJson}</script>
+  <script id="gitaxis-discovered" type="application/json" nonce="${nonce}">${discoveredJson}</script>
+  <script nonce="${nonce}" src="${escapeHtml(scriptUri)}"></script>
 </body>
 </html>`;
   }

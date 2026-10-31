@@ -16,6 +16,7 @@ import { registerSyncCommands } from './commands/sync';
 import { registerStashCommands } from './commands/stash';
 import { registerTagCommands } from './commands/tag';
 import { registerGitHubCommands } from './commands/github';
+import { ExtraheaderMigration } from './migrations/extraheaderMigration';
 import { logger } from './utils/logger';
 
 let statusBarItem: vscode.StatusBarItem;
@@ -31,6 +32,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const profileManager = new ProfileManager(profileStore, authManager, gitClient);
   const repoDiscovery = new RepositoryDiscovery(gitClient);
   const systemDiscovery = new SystemDiscovery(gitClient);
+
+  // Security migration: clean leftover plaintext extraheaders from repo configs
+  const workspacePaths = vscode.workspace.workspaceFolders?.map(f => f.uri.fsPath) || [];
+  ExtraheaderMigration.run(profileStore, gitClient, context.globalState, workspacePaths).catch(
+    err => logger.error(`Extraheader migration failed: ${String(err)}`)
+  );
+
+
 
   // 2. Setup Operation Manager with VS Code confirmation prompt
   const operationManager = new OperationManager(profileManager, gitClient);

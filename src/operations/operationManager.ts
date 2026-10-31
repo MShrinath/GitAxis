@@ -15,9 +15,11 @@ import {
 import { OperationSafetyChecker } from './safety';
 import { ConfirmationHandler } from './confirmation';
 import { ProfileManager } from '../profiles/profileManager';
-import { GitClient } from '../git/gitClient';
+import { GitClient, GitExecOptions } from '../git/gitClient';
 import { GitHubClient } from '../github/githubClient';
 import { logger } from '../utils/logger';
+import { Validation } from '../utils/validation';
+
 
 export type ProfileMismatchPromptFn = (
   activeProfile: GitProfile,
@@ -237,7 +239,8 @@ export class OperationManager implements IOperationManager {
       return result;
     } catch (err: unknown) {
       const completedAt = new Date().toISOString();
-      const errorStr = String((err as Error).message || err);
+      const rawErrorStr = String((err as Error).message || err);
+      const errorStr = Validation.sanitizeUrl(rawErrorStr);
       logger.error(`Operation ${operation.type} failed: ${errorStr}`);
 
       let errorCode: OperationErrorCode = 'UNKNOWN';
@@ -272,7 +275,7 @@ export class OperationManager implements IOperationManager {
     const input = operation.input as any;
 
     if (operation.type.startsWith('git.')) {
-      return this.dispatchGitOperation<T>(operation.type, input);
+      return this.dispatchGitOperation<T>(operation.type, input, auth);
     }
 
     if (operation.type.startsWith('github.')) {
@@ -286,7 +289,19 @@ export class OperationManager implements IOperationManager {
     throw new Error(`Unknown operation type: ${operation.type}`);
   }
 
-  private async dispatchGitOperation<T>(type: string, input: any): Promise<T> {
+  private async dispatchGitOperation<T>(type: string, input: any, auth?: ResolvedAuthentication): Promise<T> {
+    const execOptions: GitExecOptions = {};
+    if (auth?.credential) {
+      const username = auth.username || '';
+      const authString = username ? `${username}:${auth.credential}` : `:${auth.credential}`;
+      const base64Auth = Buffer.from(authString).toString('base64');
+      execOptions.env = {
+        GIT_CONFIG_COUNT: '1',
+        GIT_CONFIG_KEY_0: 'http.extraheader',
+        GIT_CONFIG_VALUE_0: `AUTHORIZATION: basic ${base64Auth}`,
+      };
+    }
+
     switch (type) {
       case 'git.status':
         return (await this.gitClient.status(input.repositoryPath)) as unknown as T;
@@ -325,9 +340,9 @@ export class OperationManager implements IOperationManager {
       case 'git.rebase':
         return (await this.gitClient.rebase(input.repositoryPath, input.onto)) as unknown as T;
       case 'git.fetch':
-        return (await this.gitClient.fetch(input.repositoryPath, input.remote, input.prune, input.tags)) as unknown as T;
+        return (await this.gitClient.fetch(input.repositoryPath, input.remote, input.prune, input.tags, execOptions)) as unknown as T;
       case 'git.pull':
-        return (await this.gitClient.pull(input.repositoryPath, input.remote, input.branch, input.rebase)) as unknown as T;
+        return (await this.gitClient.pull(input.repositoryPath, input.remote, input.branch, input.rebase, execOptions)) as unknown as T;
       case 'git.push':
         return (await this.gitClient.push(
           input.repositoryPath,
@@ -336,10 +351,11 @@ export class OperationManager implements IOperationManager {
           input.setUpstream,
           input.force,
           input.forceWithLease,
-          input.tags
+          input.tags,
+          execOptions
         )) as unknown as T;
       case 'git.clone':
-        await this.gitClient.clone(input.url, input.destinationPath, input.branch, input.depth);
+        await this.gitClient.clone(input.url, input.destinationPath, input.branch, input.depth, execOptions);
         return true as unknown as T;
       case 'git.init':
         await this.gitClient.init(input.repositoryPath, input.bare);
@@ -348,6 +364,7 @@ export class OperationManager implements IOperationManager {
         return (await this.gitClient.stash(input.repositoryPath, input.message, input.includeUntracked)) as unknown as T;
       case 'git.stash.apply':
         return (await this.gitClient.stashApply(input.repositoryPath, input.stash)) as unknown as T;
+
       case 'git.stash.pop':
         return (await this.gitClient.stashPop(input.repositoryPath, input.stash)) as unknown as T;
       case 'git.stash.drop':

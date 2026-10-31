@@ -90,8 +90,9 @@ export function registerProfileCommands(
         prompt: 'Enter a profile name (e.g. work, personal, opensource)',
         validateInput: val => {
           if (!Validation.isValidProfileName(val)) {
-            return 'Please enter a valid profile name (alphanumeric, dash, underscore, 1-64 chars)';
+            return 'Please enter a valid profile name (alphanumeric, dash, underscore, dot, space, 1-64 chars)';
           }
+
           return undefined;
         },
       });
