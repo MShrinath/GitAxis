@@ -253,4 +253,41 @@ describe('Folder Rules & Set-and-Forget (v0.6.0)', () => {
       assert.deepStrictEqual(retrieved?.folderRules, ['~/projects/gamma/**']);
     });
   });
+
+  describe('5. Section 7: hasconfig:remote.*.url: Remote URL Rules', () => {
+    it('should format hasconfig:remote.*.url: conditions and generate includeIf block', () => {
+      const p = {
+        id: 'p-remote',
+        name: 'AcmeOrg',
+        git: { name: 'Acme Dev', email: 'dev@acme.com', scope: 'local' as const },
+        authentication: { type: 'none' as const, source: 'user-input' as const },
+        metadata: { source: 'manual' as const },
+        createdAt: '',
+        updatedAt: '',
+        folderRules: ['hasconfig:remote.*.url:git@github.com:acme/**', 'https://github.com/client-org/**'],
+      };
+
+      const block = folderRuleManager.generateIncludeIfBlock([p]);
+      assert.ok(block.includes('[includeIf "hasconfig:remote.*.url:git@github.com:acme/**"]'));
+      assert.ok(block.includes('[includeIf "hasconfig:remote.*.url:https://github.com/client-org/**"]'));
+    });
+
+    it('should match remotes against hasconfig:remote.*.url: patterns during profile resolution', async () => {
+      const pAcme = await profileManager.createProfile({
+        name: 'Acme',
+        git: { name: 'Acme User', email: 'acme@work.com' },
+        authentication: { type: 'none' },
+        folderRules: ['git@github.com:acme/**'],
+      });
+
+      const repoPath = 'C:/repos/random-unbound-folder';
+      const resolved = await profileManager.resolveProfileForRepository(repoPath, {
+        remotes: [{ name: 'origin', fetchUrl: 'git@github.com:acme/backend.git', pushUrl: 'git@github.com:acme/backend.git' }],
+      });
+
+      assert.ok(resolved);
+      assert.strictEqual(resolved.source, 'folder-rule');
+      assert.strictEqual(resolved.profile.id, pAcme.id);
+    });
+  });
 });

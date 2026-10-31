@@ -333,8 +333,16 @@ export class ProfileManager {
       }
     }
 
-    // 2. Folder rule (includeIf / folder path pattern matching)
-    const folderMatch = this.folderRuleManager.resolveProfile(targetPath, profiles);
+    // Resolve remotes early so folder and remote rules can match them
+    let remotes = options?.remotes;
+    if (!remotes) {
+      try {
+        remotes = await this.gitClient.getRemotes(targetPath);
+      } catch {}
+    }
+
+    // 2. Folder rule & remote rule (includeIf / folder path & remote URL pattern matching)
+    const folderMatch = this.folderRuleManager.resolveProfile(targetPath, profiles, remotes);
     if (folderMatch) {
       return {
         profile: folderMatch.profile,
@@ -345,12 +353,6 @@ export class ProfileManager {
     }
 
     // 3. Matcher (remote owner, host, email, name)
-    let remotes = options?.remotes;
-    if (!remotes) {
-      try {
-        remotes = await this.gitClient.getRemotes(targetPath);
-      } catch {}
-    }
 
     let localGitEmail = options?.localGitEmail;
     let localGitName = options?.localGitName;

@@ -93,17 +93,17 @@ export class GitClient {
     }
   }
 
-  public async status(repoPath: string): Promise<RepositoryStatus> {
+  public async status(repoPath: string, options?: GitExecOptions): Promise<RepositoryStatus> {
     try {
-      const { stdout } = await this.exec(['status', '--porcelain=v2', '--branch'], { cwd: repoPath });
+      const { stdout } = await this.exec(['status', '--porcelain=v2', '--branch'], { cwd: repoPath, ...options });
       return RepositoryParser.parseStatus(stdout);
     } catch {
-      const { stdout } = await this.exec(['status', '--porcelain'], { cwd: repoPath });
+      const { stdout } = await this.exec(['status', '--porcelain'], { cwd: repoPath, ...options });
       return RepositoryParser.parseStatus(stdout);
     }
   }
 
-  public async diff(repoPath: string, staged?: boolean, filePath?: string): Promise<string> {
+  public async diff(repoPath: string, staged?: boolean, filePath?: string, options?: GitExecOptions): Promise<string> {
     const args = ['diff'];
     if (staged) {
       args.push('--staged');
@@ -111,11 +111,11 @@ export class GitClient {
     if (filePath) {
       args.push('--', filePath);
     }
-    const { stdout } = await this.exec(args, { cwd: repoPath });
+    const { stdout } = await this.exec(args, { cwd: repoPath, ...options });
     return stdout;
   }
 
-  public async add(repoPath: string, paths: string[], all?: boolean): Promise<void> {
+  public async add(repoPath: string, paths: string[], all?: boolean, options?: GitExecOptions): Promise<void> {
     const args = ['add'];
     if (all) {
       args.push('-A');
@@ -124,19 +124,19 @@ export class GitClient {
     } else {
       args.push('.');
     }
-    await this.exec(args, { cwd: repoPath });
+    await this.exec(args, { cwd: repoPath, ...options });
   }
 
-  public async restore(repoPath: string, paths: string[], staged?: boolean): Promise<void> {
+  public async restore(repoPath: string, paths: string[], staged?: boolean, options?: GitExecOptions): Promise<void> {
     const args = ['restore'];
     if (staged) {
       args.push('--staged');
     }
     args.push('--', ...paths);
-    await this.exec(args, { cwd: repoPath });
+    await this.exec(args, { cwd: repoPath, ...options });
   }
 
-  public async commit(repoPath: string, message: string, amend?: boolean, signoff?: boolean): Promise<string> {
+  public async commit(repoPath: string, message: string, amend?: boolean, signoff?: boolean, options?: GitExecOptions): Promise<string> {
     const args = ['commit', '-m', message];
     if (amend) {
       args.push('--amend');
@@ -144,27 +144,27 @@ export class GitClient {
     if (signoff) {
       args.push('--signoff');
     }
-    const { stdout } = await this.exec(args, { cwd: repoPath });
+    const { stdout } = await this.exec(args, { cwd: repoPath, ...options });
     return stdout;
   }
 
-  public async amend(repoPath: string, message?: string, noEdit?: boolean): Promise<string> {
+  public async amend(repoPath: string, message?: string, noEdit?: boolean, options?: GitExecOptions): Promise<string> {
     const args = ['commit', '--amend'];
     if (noEdit) {
       args.push('--no-edit');
     } else if (message) {
       args.push('-m', message);
     }
-    const { stdout } = await this.exec(args, { cwd: repoPath });
+    const { stdout } = await this.exec(args, { cwd: repoPath, ...options });
     return stdout;
   }
 
-  public async getBranches(repoPath: string): Promise<BranchInfo[]> {
-    const { stdout } = await this.exec(['branch', '--list'], { cwd: repoPath });
+  public async getBranches(repoPath: string, options?: GitExecOptions): Promise<BranchInfo[]> {
+    const { stdout } = await this.exec(['branch', '--list'], { cwd: repoPath, ...options });
     return BranchParser.parseBranchList(stdout);
   }
 
-  public async createBranch(repoPath: string, name: string, startPoint?: string, checkout?: boolean): Promise<void> {
+  public async createBranch(repoPath: string, name: string, startPoint?: string, checkout?: boolean, options?: GitExecOptions): Promise<void> {
     if (!Validation.isValidBranchName(name)) {
       throw new Error(`Invalid branch name: "${name}"`);
     }
@@ -174,44 +174,44 @@ export class GitClient {
     if (checkout) {
       const args = ['checkout', '-b', name];
       if (startPoint) args.push(startPoint);
-      await this.exec(args, { cwd: repoPath });
+      await this.exec(args, { cwd: repoPath, ...options });
     } else {
       const args = ['branch', name];
       if (startPoint) args.push(startPoint);
-      await this.exec(args, { cwd: repoPath });
+      await this.exec(args, { cwd: repoPath, ...options });
     }
   }
 
-  public async deleteBranch(repoPath: string, name: string, force?: boolean): Promise<void> {
+  public async deleteBranch(repoPath: string, name: string, force?: boolean, options?: GitExecOptions): Promise<void> {
     if (!Validation.isValidBranchName(name)) {
       throw new Error(`Invalid branch name: "${name}"`);
     }
     const args = ['branch', force ? '-D' : '-d', name];
-    await this.exec(args, { cwd: repoPath });
+    await this.exec(args, { cwd: repoPath, ...options });
   }
 
-  public async renameBranch(repoPath: string, oldName: string, newName: string): Promise<void> {
+  public async renameBranch(repoPath: string, oldName: string, newName: string, options?: GitExecOptions): Promise<void> {
     if (!Validation.isValidBranchName(oldName) || !Validation.isValidBranchName(newName)) {
       throw new Error(`Invalid branch name for rename: "${oldName}" -> "${newName}"`);
     }
-    await this.exec(['branch', '-m', oldName, newName], { cwd: repoPath });
+    await this.exec(['branch', '-m', oldName, newName], { cwd: repoPath, ...options });
   }
 
-  public async checkout(repoPath: string, ref: string, createBranch?: boolean): Promise<void> {
+  public async checkout(repoPath: string, ref: string, createBranch?: boolean, options?: GitExecOptions): Promise<void> {
     if (createBranch) {
       if (!Validation.isValidBranchName(ref)) {
         throw new Error(`Invalid branch name: "${ref}"`);
       }
-      await this.exec(['checkout', '-b', ref], { cwd: repoPath });
+      await this.exec(['checkout', '-b', ref], { cwd: repoPath, ...options });
     } else {
       if (!Validation.isValidRef(ref)) {
         throw new Error(`Invalid git ref: "${ref}"`);
       }
-      await this.exec(['checkout', ref], { cwd: repoPath });
+      await this.exec(['checkout', ref], { cwd: repoPath, ...options });
     }
   }
 
-  public async switchBranch(repoPath: string, branch: string, create?: boolean): Promise<void> {
+  public async switchBranch(repoPath: string, branch: string, create?: boolean, options?: GitExecOptions): Promise<void> {
     if (!Validation.isValidBranchName(branch)) {
       throw new Error(`Invalid branch name: "${branch}"`);
     }
@@ -220,10 +220,10 @@ export class GitClient {
       args.push('-c');
     }
     args.push(branch);
-    await this.exec(args, { cwd: repoPath });
+    await this.exec(args, { cwd: repoPath, ...options });
   }
 
-  public async merge(repoPath: string, branch: string, noFastForward?: boolean, squash?: boolean): Promise<string> {
+  public async merge(repoPath: string, branch: string, noFastForward?: boolean, squash?: boolean, options?: GitExecOptions): Promise<string> {
     if (!Validation.isValidRef(branch)) {
       throw new Error(`Invalid merge branch/ref: "${branch}"`);
     }
@@ -231,16 +231,16 @@ export class GitClient {
     if (noFastForward) args.push('--no-ff');
     if (squash) args.push('--squash');
     args.push(branch);
-    const { stdout } = await this.exec(args, { cwd: repoPath });
+    const { stdout } = await this.exec(args, { cwd: repoPath, ...options });
     return stdout;
   }
 
-  public async rebase(repoPath: string, onto: string): Promise<string> {
+  public async rebase(repoPath: string, onto: string, options?: GitExecOptions): Promise<string> {
     if (!Validation.isValidRef(onto)) {
       throw new Error(`Invalid rebase ref: "${onto}"`);
     }
     const args = ['rebase', onto];
-    const { stdout } = await this.exec(args, { cwd: repoPath });
+    const { stdout } = await this.exec(args, { cwd: repoPath, ...options });
     return stdout;
   }
 
@@ -303,35 +303,35 @@ export class GitClient {
   }
 
 
-  public async stash(repoPath: string, message?: string, includeUntracked?: boolean): Promise<string> {
+  public async stash(repoPath: string, message?: string, includeUntracked?: boolean, options?: GitExecOptions): Promise<string> {
     const args = ['stash', 'push'];
     if (includeUntracked) args.push('-u');
     if (message) args.push('-m', message);
-    const { stdout } = await this.exec(args, { cwd: repoPath });
+    const { stdout } = await this.exec(args, { cwd: repoPath, ...options });
     return stdout;
   }
 
-  public async stashApply(repoPath: string, stashRef: string = 'stash@{0}'): Promise<string> {
-    const { stdout } = await this.exec(['stash', 'apply', stashRef], { cwd: repoPath });
+  public async stashApply(repoPath: string, stashRef: string = 'stash@{0}', options?: GitExecOptions): Promise<string> {
+    const { stdout } = await this.exec(['stash', 'apply', stashRef], { cwd: repoPath, ...options });
     return stdout;
   }
 
-  public async stashPop(repoPath: string, stashRef: string = 'stash@{0}'): Promise<string> {
-    const { stdout } = await this.exec(['stash', 'pop', stashRef], { cwd: repoPath });
+  public async stashPop(repoPath: string, stashRef: string = 'stash@{0}', options?: GitExecOptions): Promise<string> {
+    const { stdout } = await this.exec(['stash', 'pop', stashRef], { cwd: repoPath, ...options });
     return stdout;
   }
 
-  public async stashDrop(repoPath: string, stashRef: string = 'stash@{0}'): Promise<string> {
-    const { stdout } = await this.exec(['stash', 'drop', stashRef], { cwd: repoPath });
+  public async stashDrop(repoPath: string, stashRef: string = 'stash@{0}', options?: GitExecOptions): Promise<string> {
+    const { stdout } = await this.exec(['stash', 'drop', stashRef], { cwd: repoPath, ...options });
     return stdout;
   }
 
-  public async getStashList(repoPath: string): Promise<StashEntry[]> {
-    const { stdout } = await this.exec(['stash', 'list'], { cwd: repoPath });
+  public async getStashList(repoPath: string, options?: GitExecOptions): Promise<StashEntry[]> {
+    const { stdout } = await this.exec(['stash', 'list'], { cwd: repoPath, ...options });
     return StashParser.parseStashList(stdout);
   }
 
-  public async createTag(repoPath: string, name: string, target?: string, message?: string): Promise<void> {
+  public async createTag(repoPath: string, name: string, target?: string, message?: string, options?: GitExecOptions): Promise<void> {
     if (!Validation.isValidTagName(name)) {
       throw new Error(`Invalid tag name: "${name}"`);
     }
@@ -345,44 +345,44 @@ export class GitClient {
       args.push(name);
     }
     if (target) args.push(target);
-    await this.exec(args, { cwd: repoPath });
+    await this.exec(args, { cwd: repoPath, ...options });
   }
 
-  public async deleteTag(repoPath: string, name: string): Promise<void> {
+  public async deleteTag(repoPath: string, name: string, options?: GitExecOptions): Promise<void> {
     if (!Validation.isValidTagName(name)) {
       throw new Error(`Invalid tag name: "${name}"`);
     }
-    await this.exec(['tag', '-d', name], { cwd: repoPath });
+    await this.exec(['tag', '-d', name], { cwd: repoPath, ...options });
   }
 
-  public async getTags(repoPath: string): Promise<TagInfo[]> {
-    const { stdout } = await this.exec(['tag', '-l'], { cwd: repoPath });
+  public async getTags(repoPath: string, options?: GitExecOptions): Promise<TagInfo[]> {
+    const { stdout } = await this.exec(['tag', '-l'], { cwd: repoPath, ...options });
     return TagParser.parseTagList(stdout);
   }
 
-  public async getRemotes(repoPath: string): Promise<GitRemote[]> {
-    const { stdout } = await this.exec(['remote', '-v'], { cwd: repoPath });
+  public async getRemotes(repoPath: string, options?: GitExecOptions): Promise<GitRemote[]> {
+    const { stdout } = await this.exec(['remote', '-v'], { cwd: repoPath, ...options });
     return RepositoryParser.parseRemotes(stdout);
   }
 
-  public async addRemote(repoPath: string, name: string, url: string): Promise<void> {
+  public async addRemote(repoPath: string, name: string, url: string, options?: GitExecOptions): Promise<void> {
     if (!Validation.isValidRemoteName(name)) {
       throw new Error(`Invalid remote name: "${name}"`);
     }
     if (!Validation.isValidGitUrl(url)) {
       throw new Error(`Invalid remote URL: "${url}"`);
     }
-    await this.exec(['remote', 'add', name, url], { cwd: repoPath });
+    await this.exec(['remote', 'add', name, url], { cwd: repoPath, ...options });
   }
 
-  public async removeRemote(repoPath: string, name: string): Promise<void> {
+  public async removeRemote(repoPath: string, name: string, options?: GitExecOptions): Promise<void> {
     if (!Validation.isValidRemoteName(name)) {
       throw new Error(`Invalid remote name: "${name}"`);
     }
-    await this.exec(['remote', 'remove', name], { cwd: repoPath });
+    await this.exec(['remote', 'remove', name], { cwd: repoPath, ...options });
   }
 
-  public async setRemoteUrl(repoPath: string, name: string, url: string, push?: boolean): Promise<void> {
+  public async setRemoteUrl(repoPath: string, name: string, url: string, push?: boolean, options?: GitExecOptions): Promise<void> {
     if (!Validation.isValidRemoteName(name)) {
       throw new Error(`Invalid remote name: "${name}"`);
     }
@@ -392,33 +392,33 @@ export class GitClient {
     const args = ['remote', 'set-url'];
     if (push) args.push('--push');
     args.push(name, url);
-    await this.exec(args, { cwd: repoPath });
+    await this.exec(args, { cwd: repoPath, ...options });
   }
 
-  public async log(repoPath: string, maxCount: number = 20, branch?: string, filePath?: string): Promise<CommitInfo[]> {
+  public async log(repoPath: string, maxCount: number = 20, branch?: string, filePath?: string, options?: GitExecOptions): Promise<CommitInfo[]> {
     const args = ['log', `-n${maxCount}`, '--format=%H%x1f%an%x1f%ae%x1f%aI%x1f%s%x1e'];
     if (branch) args.push(branch);
     if (filePath) args.push('--', filePath);
-    const { stdout } = await this.exec(args, { cwd: repoPath });
+    const { stdout } = await this.exec(args, { cwd: repoPath, ...options });
     return CommitParser.parseLog(stdout);
   }
 
-  public async blame(repoPath: string, filePath: string, startLine?: number, endLine?: number): Promise<string> {
+  public async blame(repoPath: string, filePath: string, startLine?: number, endLine?: number, options?: GitExecOptions): Promise<string> {
     const args = ['blame'];
     if (startLine && endLine) {
       args.push(`-L${startLine},${endLine}`);
     }
     args.push('--', filePath);
-    const { stdout } = await this.exec(args, { cwd: repoPath });
+    const { stdout } = await this.exec(args, { cwd: repoPath, ...options });
     return stdout;
   }
 
-  public async reset(repoPath: string, ref: string, mode: 'soft' | 'mixed' | 'hard'): Promise<void> {
+  public async reset(repoPath: string, ref: string, mode: 'soft' | 'mixed' | 'hard', options?: GitExecOptions): Promise<void> {
     if (!Validation.isValidRef(ref)) {
       throw new Error(`Invalid reset ref: "${ref}"`);
     }
     const args = ['reset', `--${mode}`, ref];
-    await this.exec(args, { cwd: repoPath });
+    await this.exec(args, { cwd: repoPath, ...options });
   }
 
   public async clone(url: string, destinationPath: string, branch?: string, depth?: number, options?: GitExecOptions): Promise<void> {
@@ -438,12 +438,11 @@ export class GitClient {
     await this.exec(args, options);
   }
 
-
-  public async init(repoPath: string, bare?: boolean): Promise<void> {
+  public async init(repoPath: string, bare?: boolean, options?: GitExecOptions): Promise<void> {
     const args = ['init'];
     if (bare) args.push('--bare');
     args.push(repoPath);
-    await this.exec(args);
+    await this.exec(args, options);
   }
 
   public async getConfig(repoPath: string, key: string): Promise<string | undefined> {

@@ -19,6 +19,7 @@ const ALLOWED_COMMANDS = new Set([
   'deleteProfile',
   'scanAccounts',
   'importDiscoveredAccount',
+  'importAllDiscoveredAccounts',
   'openInBrowser',
   'openGitHubRepo',
   'linkToRepo',
@@ -320,13 +321,24 @@ export class SidebarViewProvider implements vscode.WebviewViewProvider {
                   if (this.discoveredAccounts.length === 0) {
                     vscode.window.showInformationMessage('Scan completed. No new accounts detected.');
                   } else {
+                    const importAllBtn = 'Create profiles for all found accounts';
                     vscode.window.showInformationMessage(
-                      `Scan completed. Found ${this.discoveredAccounts.length} account suggestion(s).`
-                    );
+                      `Scan completed. Found ${this.discoveredAccounts.length} account suggestion(s).`,
+                      importAllBtn
+                    ).then(async choice => {
+                      if (choice === importAllBtn) {
+                        await this.importAllAccounts();
+                      }
+                    });
                   }
                 }
               );
             }
+            break;
+          }
+
+          case 'importAllDiscoveredAccounts': {
+            await this.importAllAccounts();
             break;
           }
 
@@ -500,6 +512,41 @@ export class SidebarViewProvider implements vscode.WebviewViewProvider {
     });
 
     this.refresh();
+  }
+
+  public async importAllAccounts(): Promise<void> {
+    if (this.discoveredAccounts.length === 0) return;
+    const toImport = [...this.discoveredAccounts];
+    let count = 0;
+    for (const raw of toImport) {
+      const accountToImport: CreateProfileInput = {
+        name: raw.name,
+        git: {
+          name: raw.git.name,
+          email: raw.git.email,
+          scope: raw.git.scope || 'local',
+        },
+        github: raw.github
+          ? {
+              host: raw.github.host || 'github.com',
+              username: raw.github.username,
+            }
+          : undefined,
+        authentication: (raw as any).authentication || {
+          type: raw.source === 'github-cli' ? 'github-cli' : 'none',
+          source: raw.source === 'github-cli' ? 'github-cli' : 'system',
+        },
+        source: (raw.source as any) || 'system-discovery',
+        imported: true,
+        description: raw.description,
+      };
+      await this.profileManager.createProfile(accountToImport);
+      count++;
+    }
+    this.discoveredAccounts = [];
+    vscode.window.showInformationMessage(`Successfully created ${count} profile(s) from discovered accounts!`);
+    this.onProfileChanged?.();
+    await this.refresh();
   }
 
   public async refresh(): Promise<void> {

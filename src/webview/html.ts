@@ -126,6 +126,9 @@ export class HtmlBuilder {
     const profilesJson = JSON.stringify(sanitizedProfiles).replace(/</g, '\\u003c');
     const discoveredJson = JSON.stringify(discovered).replace(/</g, '\\u003c');
 
+    const isWork = profile ? (profile.name.toLowerCase().includes('work') || profile.git.email.toLowerCase().includes('work')) : false;
+    const isPersonal = profile ? (profile.name.toLowerCase().includes('personal') || profile.git.email.toLowerCase().includes('personal')) : false;
+
     return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -140,7 +143,7 @@ export class HtmlBuilder {
   <div class="header-bar">
     <div class="brand-title">
       <span>GitAxis Control Center</span>
-      <span class="brand-pill">v0.5.0</span>
+      <span class="brand-pill">v0.7.0</span>
     </div>
     <button type="button" class="icon-btn-ghost" title="Refresh state" data-action="refresh">
       ${Icons.refresh}
@@ -154,10 +157,10 @@ export class HtmlBuilder {
       <div class="card-header-row">
         <div class="card-title-group">
           <span class="status-dot ${profile ? 'dot-active' : 'dot-inactive'}"></span>
-          <span>${profileName}</span>
+          <span>${repo && profile ? `Active for this repo: <strong>${profileName}</strong> (${profileUser})` : profileName}</span>
         </div>
         <div>
-          ${profile ? `<span class="badge badge-success">Active</span>` : ''}
+          ${profile ? `<span class="badge ${isWork ? 'badge-info' : 'badge-success'}">${isWork ? 'Work' : isPersonal ? 'Personal' : 'Active'}</span>` : ''}
           ${state.linkedProfileId && profile && state.linkedProfileId === profile.id ? `<span class="badge badge-info">Bound to repo</span>` : ''}
         </div>
       </div>
@@ -214,6 +217,9 @@ export class HtmlBuilder {
     ${
       discovered.length > 0
         ? `<div class="discovered-deck">
+            <button type="button" class="btn btn-sm btn-primary" data-action="importAllDiscoveredAccounts" style="margin-bottom: 8px; width: 100%;">
+              ${Icons.plus} Create profiles for all found accounts (${discovered.length})
+            </button>
             ${discovered
               .map(
                 (acc, idx) => `

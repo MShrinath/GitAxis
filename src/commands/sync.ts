@@ -51,8 +51,12 @@ export function registerSyncCommands(
         {
           location: vscode.ProgressLocation.Notification,
           title: 'GitAxis: Pushing to remote...',
+          cancellable: true,
         },
-        async () => {
+        async (_progress, token) => {
+          token.onCancellationRequested(() => {
+            operationManager.cancel(op.id);
+          });
           const res = await operationManager.execute(op);
           if (res.success) {
             vscode.window.showInformationMessage('Push succeeded.');
@@ -91,8 +95,12 @@ export function registerSyncCommands(
         {
           location: vscode.ProgressLocation.Notification,
           title: 'GitAxis: Pulling from remote...',
+          cancellable: true,
         },
-        async () => {
+        async (_progress, token) => {
+          token.onCancellationRequested(() => {
+            operationManager.cancel(op.id);
+          });
           const res = await operationManager.execute(op);
           if (res.success) {
             vscode.window.showInformationMessage('Pull succeeded.');
@@ -126,8 +134,12 @@ export function registerSyncCommands(
         {
           location: vscode.ProgressLocation.Notification,
           title: 'GitAxis: Fetching remotes...',
+          cancellable: true,
         },
-        async () => {
+        async (_progress, token) => {
+          token.onCancellationRequested(() => {
+            operationManager.cancel(op.id);
+          });
           const res = await operationManager.execute(op);
           if (res.success) {
             vscode.window.showInformationMessage('Fetch completed.');

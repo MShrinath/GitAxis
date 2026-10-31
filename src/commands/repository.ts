@@ -326,8 +326,15 @@ export function registerRepositoryCommands(
       });
 
       vscode.window.withProgress(
-        { location: vscode.ProgressLocation.Notification, title: `GitAxis: Cloning ${url.trim()}...` },
-        async () => {
+        {
+          location: vscode.ProgressLocation.Notification,
+          title: `GitAxis: Cloning ${url.trim()}...`,
+          cancellable: true,
+        },
+        async (_progress, token) => {
+          token.onCancellationRequested(() => {
+            operationManager.cancel(op.id);
+          });
           const res = await operationManager.execute(op);
           if (res.success) {
             if (selectedProfileId) {

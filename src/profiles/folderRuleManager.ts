@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { GitProfile } from '../contracts';
+import { GitProfile, GitRemote } from '../contracts';
 import { Platform } from '../utils/platform';
 import { logger } from '../utils/logger';
 
@@ -54,19 +54,39 @@ export class FolderRuleManager {
   }
 
   /**
-   * Check if a repository path matches a folder rule pattern.
+   * Check if a repository path or remotes match a folder/remote rule pattern.
    * Examples:
    *   "~/work/**" matches "/home/user/work/repo1"
-   *   "~/work/" matches "/home/user/work/repo1"
-   *   "C:/projects/work/**" matches "C:/projects/work/client-a"
+   *   "hasconfig:remote.*.url:git@github.com:acme/**" matches remotes for acme org
+   *   "git@github.com:acme/**" matches remotes for acme org
    */
-  public matchesPattern(targetPath: string, rulePattern: string): boolean {
-    if (!targetPath || !rulePattern) return false;
+  public matchesPattern(targetPath: string, rulePattern: string, remotes?: GitRemote[]): boolean {
+    if (!rulePattern) return false;
+
+    const cleanRule = rulePattern.trim();
+
+    // Remote URL matching (hasconfig:remote.*.url: or direct remote pattern)
+    if (cleanRule.startsWith('hasconfig:remote.*.url:') || /^(?:https?:\/\/|git@|ssh:\/\/)/i.test(cleanRule)) {
+      if (!remotes || remotes.length === 0) return false;
+      const urlPattern = cleanRule.replace(/^hasconfig:remote\.\*\.url:/i, '').trim();
+      const regexStr = '^' + urlPattern
+        .replace(/[.+^${}()|[\]\\]/g, '\\$&')
+        .replace(/\*\*/g, '.*')
+        .replace(/\*/g, '[^/]*') + '$';
+      const regex = new RegExp(regexStr, 'i');
+      return remotes.some(r => {
+        const fUrl = r.fetchUrl?.trim() || '';
+        const pUrl = r.pushUrl?.trim() || '';
+        return regex.test(fUrl) || regex.test(pUrl);
+      });
+    }
+
+    if (!targetPath) return false;
 
     const normTarget = this.normalizePathForComparison(targetPath);
 
     // Strip trailing /** or /* or / from pattern for prefix matching
-    let cleanPattern = rulePattern.trim();
+    let cleanPattern = cleanRule;
     if (cleanPattern.endsWith('/**')) {
       cleanPattern = cleanPattern.slice(0, -3);
     } else if (cleanPattern.endsWith('/*')) {
@@ -92,10 +112,10 @@ export class FolderRuleManager {
   }
 
   /**
-   * Resolves the profile matching a target repository path based on folder rules.
+   * Resolves the profile matching a target repository path or remotes based on folder and remote rules.
    * If multiple rules match, returns the longest (most specific) rule match.
    */
-  public resolveProfile(targetPath: string, profiles: GitProfile[]): FolderRuleMatch | undefined {
+  public resolveProfile(targetPath: string, profiles: GitProfile[], remotes?: GitRemote[]): FolderRuleMatch | undefined {
     let bestMatch: FolderRuleMatch | undefined;
     let longestRuleLength = -1;
 
@@ -103,7 +123,7 @@ export class FolderRuleManager {
       if (!profile.folderRules || profile.folderRules.length === 0) continue;
 
       for (const rule of profile.folderRules) {
-        if (this.matchesPattern(targetPath, rule)) {
+        if (this.matchesPattern(targetPath, rule, remotes)) {
           if (rule.length > longestRuleLength) {
             longestRuleLength = rule.length;
             bestMatch = { profile, rule };
@@ -193,10 +213,24 @@ export class FolderRuleManager {
   }
 
   /**
-   * Generate the [includeIf "gitdir:..."] block for all profiles with folder rules.
+   * Format full includeIf condition string (gitdir:... or hasconfig:remote.*.url:...)
+   */
+  public formatIncludeIfCondition(rule: string): string {
+    const trimmed = rule.trim();
+    if (trimmed.startsWith('hasconfig:')) {
+      return trimmed;
+    }
+    if (/^(?:https?:\/\/|git@|ssh:\/\/)/i.test(trimmed)) {
+      return `hasconfig:remote.*.url:${trimmed}`;
+    }
+    return `gitdir:${this.formatGitdirPattern(trimmed)}`;
+  }
+
+  /**
+   * Generate the [includeIf "..."] block for all profiles with folder/remote rules.
    */
   public generateIncludeIfBlock(profiles: GitProfile[]): string {
-    const rulesToEmit: Array<{ gitdir: string; configPath: string }> = [];
+    const rulesToEmit: Array<{ condition: string; configPath: string }> = [];
 
     for (const profile of profiles) {
       if (!profile.folderRules || profile.folderRules.length === 0) continue;
@@ -204,8 +238,8 @@ export class FolderRuleManager {
 
       for (const rule of profile.folderRules) {
         if (!rule.trim()) continue;
-        const gitdir = this.formatGitdirPattern(rule);
-        rulesToEmit.push({ gitdir, configPath });
+        const condition = this.formatIncludeIfCondition(rule);
+        rulesToEmit.push({ condition, configPath });
       }
     }
 
@@ -215,12 +249,12 @@ export class FolderRuleManager {
 
     const lines: string[] = [
       GITAXIS_CONFIG_START,
-      '# The following rules automatically switch your Git identity based on folder paths.',
+      '# The following rules automatically switch your Git identity based on folder paths or remote URLs.',
       '# Managed by GitAxis. Use "GitAxis: Remove All GitAxis Config" to safely undo.',
     ];
 
     for (const r of rulesToEmit) {
-      lines.push(`[includeIf "gitdir:${r.gitdir}"]`);
+      lines.push(`[includeIf "${r.condition}"]`);
       lines.push(`\tpath = ${r.configPath}`);
     }
 

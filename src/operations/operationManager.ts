@@ -393,13 +393,21 @@ export class OperationManager implements IOperationManager {
         try {
           const remotes = await this.gitClient.getRemotes(repoPath);
           if (remotes.length > 0) {
-            const { stdout } = await this.gitClient.exec(['log', '@{u}..HEAD', '--oneline'], { cwd: repoPath }).catch(() => ({ stdout: '' }));
-            if (stdout.trim() === '') {
-              safetyAssessment.confirmation = {
-                required: true,
-                reason: 'Amend published commit',
-                warning: 'The commit you are amending has already been pushed to remote. Amending will rewrite published history and require force-pushing.',
-              };
+            let hasUpstream = false;
+            try {
+              await this.gitClient.exec(['rev-parse', '--verify', '@{u}'], { cwd: repoPath });
+              hasUpstream = true;
+            } catch {}
+
+            if (hasUpstream) {
+              const { stdout } = await this.gitClient.exec(['log', '@{u}..HEAD', '--oneline'], { cwd: repoPath }).catch(() => ({ stdout: '' }));
+              if (stdout.trim() === '') {
+                safetyAssessment.confirmation = {
+                  required: true,
+                  reason: 'Amend published commit',
+                  warning: 'The commit you are amending has already been pushed to remote. Amending will rewrite published history and require force-pushing.',
+                };
+              }
             }
           }
         } catch (err) {
@@ -646,44 +654,44 @@ export class OperationManager implements IOperationManager {
 
   private initHandlerMaps(): void {
     this.gitHandlers = {
-      'git.status': (input, opts) => this.gitClient.status(input.repositoryPath),
-      'git.diff': (input, opts) => this.gitClient.diff(input.repositoryPath, input.staged, input.path),
+      'git.status': (input, opts) => this.gitClient.status(input.repositoryPath, opts),
+      'git.diff': (input, opts) => this.gitClient.diff(input.repositoryPath, input.staged, input.path, opts),
       'git.add': async (input, opts) => {
-        await this.gitClient.add(input.repositoryPath, input.paths || [], input.all);
+        await this.gitClient.add(input.repositoryPath, input.paths || [], input.all, opts);
         return true;
       },
       'git.restore': async (input, opts) => {
-        await this.gitClient.restore(input.repositoryPath, input.paths, input.staged);
+        await this.gitClient.restore(input.repositoryPath, input.paths, input.staged, opts);
         return true;
       },
-      'git.commit': (input, opts) => this.gitClient.commit(input.repositoryPath, input.message, input.amend, input.signoff),
-      'git.amend': (input, opts) => this.gitClient.amend(input.repositoryPath, input.message, input.noEdit),
+      'git.commit': (input, opts) => this.gitClient.commit(input.repositoryPath, input.message, input.amend, input.signoff, opts),
+      'git.amend': (input, opts) => this.gitClient.amend(input.repositoryPath, input.message, input.noEdit, opts),
       'git.reset': async (input, opts) => {
-        await this.gitClient.reset(input.repositoryPath, input.ref, input.mode);
+        await this.gitClient.reset(input.repositoryPath, input.ref, input.mode, opts);
         return true;
       },
       'git.branch.create': async (input, opts) => {
-        await this.gitClient.createBranch(input.repositoryPath, input.name, input.startPoint, input.checkout);
+        await this.gitClient.createBranch(input.repositoryPath, input.name, input.startPoint, input.checkout, opts);
         return true;
       },
       'git.branch.delete': async (input, opts) => {
-        await this.gitClient.deleteBranch(input.repositoryPath, input.name, input.force);
+        await this.gitClient.deleteBranch(input.repositoryPath, input.name, input.force, opts);
         return true;
       },
       'git.branch.rename': async (input, opts) => {
-        await this.gitClient.renameBranch(input.repositoryPath, input.oldName, input.newName);
+        await this.gitClient.renameBranch(input.repositoryPath, input.oldName, input.newName, opts);
         return true;
       },
       'git.checkout': async (input, opts) => {
-        await this.gitClient.checkout(input.repositoryPath, input.ref, input.createBranch);
+        await this.gitClient.checkout(input.repositoryPath, input.ref, input.createBranch, opts);
         return true;
       },
       'git.switch': async (input, opts) => {
-        await this.gitClient.switchBranch(input.repositoryPath, input.branch, input.create);
+        await this.gitClient.switchBranch(input.repositoryPath, input.branch, input.create, opts);
         return true;
       },
-      'git.merge': (input, opts) => this.gitClient.merge(input.repositoryPath, input.branch, input.noFastForward, input.squash),
-      'git.rebase': (input, opts) => this.gitClient.rebase(input.repositoryPath, input.onto),
+      'git.merge': (input, opts) => this.gitClient.merge(input.repositoryPath, input.branch, input.noFastForward, input.squash, opts),
+      'git.rebase': (input, opts) => this.gitClient.rebase(input.repositoryPath, input.onto, opts),
       'git.fetch': (input, opts) => this.gitClient.fetch(input.repositoryPath, input.remote, input.prune, input.tags, opts),
       'git.pull': (input, opts) => this.gitClient.pull(input.repositoryPath, input.remote, input.branch, input.rebase, opts),
       'git.push': (input, opts) =>
@@ -702,35 +710,35 @@ export class OperationManager implements IOperationManager {
         return true;
       },
       'git.init': async (input, opts) => {
-        await this.gitClient.init(input.repositoryPath, input.bare);
+        await this.gitClient.init(input.repositoryPath, input.bare, opts);
         return true;
       },
-      'git.stash.create': (input, opts) => this.gitClient.stash(input.repositoryPath, input.message, input.includeUntracked),
-      'git.stash.apply': (input, opts) => this.gitClient.stashApply(input.repositoryPath, input.stash),
-      'git.stash.pop': (input, opts) => this.gitClient.stashPop(input.repositoryPath, input.stash),
-      'git.stash.drop': (input, opts) => this.gitClient.stashDrop(input.repositoryPath, input.stash),
+      'git.stash.create': (input, opts) => this.gitClient.stash(input.repositoryPath, input.message, input.includeUntracked, opts),
+      'git.stash.apply': (input, opts) => this.gitClient.stashApply(input.repositoryPath, input.stash, opts),
+      'git.stash.pop': (input, opts) => this.gitClient.stashPop(input.repositoryPath, input.stash, opts),
+      'git.stash.drop': (input, opts) => this.gitClient.stashDrop(input.repositoryPath, input.stash, opts),
       'git.tag.create': async (input, opts) => {
-        await this.gitClient.createTag(input.repositoryPath, input.name, input.target, input.message);
+        await this.gitClient.createTag(input.repositoryPath, input.name, input.target, input.message, opts);
         return true;
       },
       'git.tag.delete': async (input, opts) => {
-        await this.gitClient.deleteTag(input.repositoryPath, input.name);
+        await this.gitClient.deleteTag(input.repositoryPath, input.name, opts);
         return true;
       },
       'git.remote.add': async (input, opts) => {
-        await this.gitClient.addRemote(input.repositoryPath, input.name, input.url);
+        await this.gitClient.addRemote(input.repositoryPath, input.name, input.url, opts);
         return true;
       },
       'git.remote.remove': async (input, opts) => {
-        await this.gitClient.removeRemote(input.repositoryPath, input.name);
+        await this.gitClient.removeRemote(input.repositoryPath, input.name, opts);
         return true;
       },
       'git.remote.set-url': async (input, opts) => {
-        await this.gitClient.setRemoteUrl(input.repositoryPath, input.name, input.url, input.push);
+        await this.gitClient.setRemoteUrl(input.repositoryPath, input.name, input.url, input.push, opts);
         return true;
       },
-      'git.log': (input, opts) => this.gitClient.log(input.repositoryPath, input.maxCount, input.branch, input.path),
-      'git.blame': (input, opts) => this.gitClient.blame(input.repositoryPath, input.path, input.startLine, input.endLine),
+      'git.log': (input, opts) => this.gitClient.log(input.repositoryPath, input.maxCount, input.branch, input.path, opts),
+      'git.blame': (input, opts) => this.gitClient.blame(input.repositoryPath, input.path, input.startLine, input.endLine, opts),
     };
 
     this.githubHandlers = {

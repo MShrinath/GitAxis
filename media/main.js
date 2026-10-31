@@ -316,6 +316,10 @@
         }
         break;
       }
+      case 'importAllDiscoveredAccounts': {
+        vscode.postMessage({ command: 'importAllDiscoveredAccounts' });
+        break;
+      }
       case 'togglePat':
         togglePatVisibility();
         break;

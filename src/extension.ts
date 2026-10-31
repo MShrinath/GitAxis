@@ -164,10 +164,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         active.git.email !== undefined &&
         repoEmail.trim().toLowerCase() !== active.git.email.trim().toLowerCase();
 
+      const isWork = active.name.toLowerCase().includes('work') || active.git.email.toLowerCase().includes('work');
+      const isPersonal = active.name.toLowerCase().includes('personal') || active.git.email.toLowerCase().includes('personal');
+      const profileIcon = isWork ? '$(briefcase)' : isPersonal ? '$(person)' : '$(account)';
+
       if (emailMismatch) {
         statusBarItem.text = branchName
-          ? `$(warning) $(github) ${active.name} $(git-branch) ${branchName}`
-          : `$(warning) $(github) ${active.name}`;
+          ? `$(warning) ${profileIcon} ${active.name} $(git-branch) ${branchName}`
+          : `$(warning) ${profileIcon} ${active.name}`;
         statusBarItem.tooltip = new vscode.MarkdownString(
           `$(warning) **GitAxis Profile Mismatch**\n\n` +
           `- **Resolved Profile:** ${active.name} (${active.git.email})\n` +
@@ -178,19 +182,19 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         statusBarItem.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
       } else {
         statusBarItem.text = branchName
-          ? `$(github) ${active.name} $(git-branch) ${branchName}`
-          : `$(github) ${active.name}`;
+          ? `${profileIcon} ${active.name} $(git-branch) ${branchName}`
+          : `${profileIcon} ${active.name}`;
         statusBarItem.tooltip = new vscode.MarkdownString(
-          `**GitAxis Profile:** ${active.name} (${active.git.email})\n\n` +
+          `${profileIcon} **GitAxis Profile:** ${active.name} (${active.git.email})\n\n` +
           `${isBound ? '*(Bound to this repo)*\n\n' : ''}` +
-          `${folderRule ? `*(Matched folder rule: \`${folderRule}\`)*\n\n` : ''}` +
+          `${folderRule ? `*(Matched rule: \`${folderRule}\`)*\n\n` : ''}` +
           `*Click to switch or manage.*`
         );
         statusBarItem.backgroundColor = undefined;
       }
       statusBarItem.show();
     } else {
-      statusBarItem.text = `$(github) No Profile`;
+      statusBarItem.text = `$(account) No Profile`;
       statusBarItem.tooltip = 'Click to create a GitAxis profile';
       statusBarItem.backgroundColor = undefined;
       statusBarItem.show();

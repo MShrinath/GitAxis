@@ -291,6 +291,46 @@ describe('Robustness, Safety & Polish (v0.7.0)', () => {
       assert.strictEqual(res.success, true);
       assert.strictEqual(prompted, true);
     });
+
+    it('should NOT warn when amending on a branch without upstream tracking branch', async () => {
+      const profile = await profileManager.createProfile({
+        name: 'PersonalLocal',
+        git: { name: 'Personal User', email: 'pers@test.com' },
+        authentication: { type: 'none' },
+      });
+
+      const op = createOperation({
+        id: 'op-amend-no-upstream',
+        type: 'git.commit',
+        input: { repositoryPath: 'C:/repos/my-app', message: 'new message', amend: true },
+        target: { kind: 'local-repository', path: 'C:/repos/my-app' },
+        safety: 'mutating',
+        confirmation: { required: false },
+        profileId: profile.id,
+        createdAt: new Date().toISOString(),
+        initiatedBy: 'command-palette',
+      });
+
+      (gitClient as any).getLocalConfig = async () => 'pers@test.com';
+      (gitClient as any).getRemotes = async () => [{ name: 'origin', fetchUrl: 'https://github.com/org/repo.git' }];
+      (gitClient as any).exec = async (args: string[]) => {
+        if (args[0] === 'rev-parse' && args[1] === '--verify' && args[2] === '@{u}') {
+          throw new Error('fatal: no upstream configured for branch');
+        }
+        return { stdout: '' };
+      };
+      (gitClient as any).commit = async () => ({ commitHash: 'abc1234' });
+
+      let prompted = false;
+      operationManager.getConfirmationHandler().setPromptFn(async () => {
+        prompted = true;
+        return true;
+      });
+
+      const res = await operationManager.execute(op);
+      assert.strictEqual(res.success, true);
+      assert.strictEqual(prompted, false); // Must NOT prompt false positive!
+    });
   });
 
   describe('3. Section 12 & 14: Repository Discovery Caching', () => {
