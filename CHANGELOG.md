@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.11.1] - 2026-10-31
+
+### Trust & Polish
+- **Clean Command Palette & Contributions**: Scrubbed all legacy V1 duplicate Git commands and obsolete "Bound to repo" commands from `package.json`, focusing the extension on seamless profile and identity management.
+- **Generic Placeholders**: Standardized all input placeholders across the webview profile form and documentation to generic role names (`Work User`, `work@company.com`, `work-user`).
+- **Brand Version Alignment**: Updated the sidebar header brand pill to reflect `v0.11.1`.
+- **Theme Icon Formatting in Tooltips**: Configured `supportThemeIcons = true` across status bar Markdown tooltips for native VS Code icon rendering.
+
+---
+
 ## [0.11.0] - 2026-10-31
 
 ### Security & Authentication

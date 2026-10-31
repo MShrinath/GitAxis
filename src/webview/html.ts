@@ -144,7 +144,7 @@ export class HtmlBuilder {
   <div class="header-bar">
     <div class="brand-title">
       <span>GitAxis Control Center</span>
-      <span class="brand-pill">v0.10.0</span>
+      <span class="brand-pill">v0.11.1</span>
     </div>
     <div class="header-actions">
       <button type="button" class="icon-btn-ghost" title="Scan local Git &amp; GitHub CLI logins" data-action="scanAccounts">
