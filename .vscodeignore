@@ -16,3 +16,4 @@ DATA-CONTRACTS.md
 .gitignore
 .gemini/**
 node_modules/**
+media/demo.mp4

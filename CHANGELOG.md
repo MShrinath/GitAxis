@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.12.1] - 2026-11-01
+
+### Improved & Polish
+- **Streamlined Webview Layout**: Removed redundant internal `GitAxis Control Center` header bar and version badge to maximize vertical editor space, leveraging VS Code's native sidebar view pane title.
+- **Integrated Header Actions**: Relocated Account Scanner and Refresh buttons directly into the `ACTIVE IDENTITY` section header row for a cleaner, unified UI.
+
+---
+
+## [0.12.0] - 2026-11-01
+
+### Added & Fixed
+- **Status Bar Theme Icon Support**: Fixed status bar tooltip icon formatting by enabling `supportThemeIcons` and `isTrusted` on Markdown strings.
+- **Alt+G Keybinding**: Added `Alt+G` (in addition to `Ctrl+Alt+G` / `Cmd+Alt+G`) for profile switching across all platforms.
+- **Demo Assets**: Embedded animated preview demo and linked 1080p release media.
+
+---
+
 ## [0.11.1] - 2026-10-31
 
 ### Trust & Polish
