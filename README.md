@@ -1,9 +1,5 @@
 <p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="media/lockup-dark.svg">
-    <source media="(prefers-color-scheme: light)" srcset="media/lockup-light.svg">
-    <img alt="GitAxis - Switch Profiles" src="media/lockup-dark.svg" width="460">
-  </picture>
+  <img alt="GitAxis" src="media/icon.png" width="96" height="96" />
 </p>
 
 # GitAxis — Multi-Profile Git & GitHub Manager for VS Code

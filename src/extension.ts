@@ -170,26 +170,34 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         statusBarItem.text = branchName
           ? `$(warning) ${profileIcon} ${active.name} $(git-branch) ${branchName}`
           : `$(warning) ${profileIcon} ${active.name}`;
-        const warningTooltip = new vscode.MarkdownString(
-          `$(warning) **GitAxis Profile Mismatch**\n\n` +
-          `- **Resolved Profile:** ${active.name} (${active.git.email})\n` +
-          `${folderRule ? `- **Folder Rule:** \`${folderRule}\`\n` : ''}` +
-          `- **Repo git config \`user.email\`:** ${repoEmail}\n\n` +
-          `*Click to switch profile or fix git identity.*`
-        );
+        const warningTooltip = new vscode.MarkdownString(undefined, true);
         warningTooltip.supportThemeIcons = true;
+        warningTooltip.isTrusted = true;
+        warningTooltip.appendMarkdown(`$(warning) **GitAxis Profile Mismatch**\n\n`);
+        warningTooltip.appendMarkdown(`- **Active Profile:** ${active.name} (${active.git.email})\n`);
+        if (folderRule) {
+          warningTooltip.appendMarkdown(`- **Folder Rule:** \`${folderRule}\`\n`);
+        }
+        warningTooltip.appendMarkdown(`- **Repo git config:** ${repoEmail}\n\n`);
+        warningTooltip.appendMarkdown(`*Click to switch profile or fix identity.*`);
         statusBarItem.tooltip = warningTooltip;
         statusBarItem.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
       } else {
         statusBarItem.text = branchName
           ? `${profileIcon} ${active.name} $(git-branch) ${branchName}`
           : `${profileIcon} ${active.name}`;
-        const normalTooltip = new vscode.MarkdownString(
-          `${profileIcon} **GitAxis Profile:** ${active.name} (${active.git.email})\n\n` +
-          `${folderRule ? `*(Matched rule: \`${folderRule}\`)*\n\n` : ''}` +
-          `*Click to switch or manage.*`
-        );
+        const normalTooltip = new vscode.MarkdownString(undefined, true);
         normalTooltip.supportThemeIcons = true;
+        normalTooltip.isTrusted = true;
+        normalTooltip.appendMarkdown(`${profileIcon} **GitAxis Profile:** ${active.name}\n\n`);
+        normalTooltip.appendMarkdown(`- **Email:** ${active.git.email}\n`);
+        if (active.github?.username) {
+          normalTooltip.appendMarkdown(`- **GitHub:** @${active.github.username}\n`);
+        }
+        if (folderRule) {
+          normalTooltip.appendMarkdown(`- **Folder Rule:** \`${folderRule}\`\n`);
+        }
+        normalTooltip.appendMarkdown(`\n*Click to switch or manage.*`);
         statusBarItem.tooltip = normalTooltip;
         statusBarItem.backgroundColor = undefined;
       }
