@@ -14,65 +14,51 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
 [![Build & Tests](https://img.shields.io/badge/tests-113%20passing-brightgreen.svg)](https://github.com/MShrinath/GitAxis)
 
-**GitAxis** eliminates the friction of managing multiple Git and GitHub accounts (Work, Personal, Client, Open Source) on the same machine. It prevents accidental commits with the wrong author email and stops `Permission to repo denied (403)` push errors in VS Code.
+**GitAxis** is a dedicated multi-account control center for Visual Studio Code and VS Code Insiders. It gives you a clean, unified dashboard to organize, switch, and automate multiple Git and GitHub profiles (Work, Personal, Open Source, Client, Freelance) without terminal gymnastics or configuration drift.
+
+---
+
+## Demo
+
+<p align="center">
+  <video src="media/demo.mp4" poster="media/demo-poster.jpg" controls="controls" muted="muted" width="100%">
+    <a href="https://github.com/MShrinath/GitAxis/raw/main/media/demo.mp4">
+      <img src="media/demo-poster.jpg" alt="GitAxis Video Demo" width="100%" />
+    </a>
+  </video>
+</p>
 
 ---
 
 ## Why GitAxis?
 
-When switching between multiple GitHub accounts on one computer:
-- **Wrong Author Stamp**: Commits accidentally carry your personal email in a company or client repository.
-- **403 Push Failures**: VS Code's Source Control silently defaults to cached OS credentials for the wrong user.
-- **SSH Key Collisions**: System `ssh-agent` offers the wrong key order for private enterprise repositories.
+Modern developers frequently work across more than one GitHub account on the same machine. Managing them manually requires constant `.gitconfig` edits, juggling SSH keys, and dealing with credential conflicts.
 
----
+GitAxis gives you a dedicated management layer right inside VS Code:
 
-## Visual Overview
-
-GitAxis adds a clean, native sidebar and status bar indicator to VS Code:
-
-```text
-+------------------ GitAxis Control Center ------------------+
-|  ACTIVE IDENTITY                                            |
-|  [Active] Work Profile (Verified)                          |
-|    Author: Jane Doe <jane@company.com>                      |
-|    Remote: https://jane-work@github.com/company/project.git |
-|    Branch: feature/auth-refactor                            |
-+-------------------------------------------------------------+
-|  PROFILES (3)                            [+ Add Profile]    |
-|                                                             |
-|  * Work                 [Active]     [Edit]                 |
-|    jane-work | GCM / PAT                                    |
-|                                                             |
-|  o Personal                          [Switch]  [Edit]       |
-|    janedoe | SSH (~/.ssh/id_ed25519)                        |
-|                                                             |
-|  o OpenSource                        [Switch]  [Edit]       |
-|    janedoe-oss | PAT (No Push)       [Switch]  [Edit]       |
-+-------------------------------------------------------------+
-|  DISCOVERED ACCOUNTS (1 found)                              |
-|  [?] client-contractor (gh cli)          [+ Import]         |
-+-------------------------------------------------------------+
-  Status Bar: [github] Work Profile (jane-work)  |  [check]
-```
+- **Centralized Profile Hub**: Store and organize all your GitHub accounts in one place with custom labels, author signatures, authentication methods, and SSH keys.
+- **Context-Aware Switching**: Switch your entire Git environment (author name, email, remote URLs, and credential helper) per repository in a single click or with `Ctrl+Alt+G`.
+- **Automated Directory Routing**: Define folder rules (e.g. `~/work/**` for Work, `~/personal/**` for Personal) so VS Code automatically activates the correct identity the moment you open a project.
+- **Clean Identity Isolation**: Keep credentials, SSH keys, and tokens strictly isolated so each account operates independently without cross-contamination.
 
 ---
 
 ## Quick Start (30 Seconds)
 
-1. **Open GitAxis**: Click the GitAxis icon in the Activity Bar or press `Ctrl+Alt+G` (`Cmd+Alt+G` on macOS).
+1. **Open GitAxis**: Click the GitAxis icon in the Activity Bar or press `Ctrl+Alt+G` / `Alt+G` (`Cmd+Alt+G` on macOS).
 2. **Add or Import Profiles**: Click **+ Add Profile** to configure author details, or click the search icon to scan and import existing machine accounts with 1 click.
-3. **Switch & Push**: Click **[Switch]** on any profile. GitAxis instantly updates local repository identity, aligns HTTPS remote URLs, and approves credentials with your credential helper. Make your commit and push normally via VS Code's native Source Control.
+3. **Switch & Code**: Click **[Switch]** on any profile. GitAxis updates the repository identity, aligns HTTPS remotes and credential helpers, and displays the active profile in the bottom status bar.
 
 ---
 
 ## Core Capabilities
 
-- **Frictionless Identity Switching**: Switch author names, emails, and credentials per repository with 1 click. The status bar dynamically displays the active profile and warns if local configuration differs from your profile.
-- **Commit & Push Guard**: Checks author name/email before commits are created, and verifies repository ownership before pushes. Modes: `warn` (default), `block`, or `off`.
-- **Folder Rules ("Set-and-Forget")**: Automatically routes identities based on folder paths (e.g. `~/work/**` -> Work) using native Git `includeIf` rules.
-- **Isolated Authentication & SSH**: Personal Access Tokens (PATs) are stored in VS Code's hardware-encrypted `SecretStorage` (never in plain text). SSH configurations enforce `-o IdentitiesOnly=yes` to guarantee the right key is presented.
-- **Zero 403 Push Errors**: Automatically aligns HTTPS remote URLs (`https://username@github.com/...`) and targets Git Credential Manager so Git never sends the wrong cached account.
+- **Unified Account Management**: Maintain as many GitHub profiles as you need (Work, Personal, Open Source, Client, Bot) with independent author names, emails, and credentials.
+- **Fast Profile Switching**: Switch identities on the fly via the sidebar, the dynamic status bar item, or the global `Ctrl+Alt+G` shortcut.
+- **Automated Directory Routing ("Set-and-Forget")**: Map directories to profiles using Git's native `includeIf` mechanism, ensuring automatic identity assignment by folder structure.
+- **Isolated Authentication & SSH**: Securely stores Personal Access Tokens in VS Code's hardware-backed `SecretStorage`. Injects `-o IdentitiesOnly=yes` into SSH commands so `ssh-agent` always presents the correct key.
+- **Integrated Commit & Push Safety**: Built-in verification guards check author and remote ownership before committing or pushing, preventing accidental identity mismatches.
+- **Seamless Native SCM Integration**: Integrates directly with VS Code's built-in Source Control. GitAxis prepares the identity and credential layer so native commit and push actions work seamlessly.
 
 ---
 
@@ -80,7 +66,7 @@ GitAxis adds a clean, native sidebar and status bar indicator to VS Code:
 
 | Command | Shortcut | Description |
 |---|---|---|
-| `GitAxis: Switch Profile` | `Ctrl+Alt+G` (`Cmd+Alt+G`) | QuickPick to switch active profile |
+| `GitAxis: Switch Profile` | `Ctrl+Alt+G` or `Alt+G` (`Cmd+Alt+G`) | QuickPick to switch active profile |
 | `GitAxis: Open Control Center` | — | Focus the GitAxis sidebar |
 | `GitAxis: Show Effective Identity` | — | Inspect resolved Git author, SSH, and GCM config |
 | `GitAxis: Configure Folder Rules` | — | Manage `includeIf` directory bindings |
