@@ -140,25 +140,19 @@ export class HtmlBuilder {
   <link rel="stylesheet" href="${escapeHtml(styleUri)}" nonce="${nonce}">
 </head>
 <body>
-  <!-- HEADER -->
-  <div class="header-bar">
-    <div class="brand-title">
-      <span>GitAxis Control Center</span>
-      <span class="brand-pill">v0.11.1</span>
-    </div>
-    <div class="header-actions">
-      <button type="button" class="icon-btn-ghost" title="Scan local Git &amp; GitHub CLI logins" data-action="scanAccounts">
-        ${Icons.search}
-      </button>
-      <button type="button" class="icon-btn-ghost" title="Refresh state" data-action="refresh">
-        ${Icons.refresh}
-      </button>
-    </div>
-  </div>
-
   <!-- ACTIVE IDENTITY & REPO -->
   <div class="section">
-    <div class="section-title">ACTIVE IDENTITY</div>
+    <div class="section-title-row">
+      <span class="section-title">ACTIVE IDENTITY</span>
+      <div class="header-actions">
+        <button type="button" class="icon-btn-ghost" title="Scan local Git &amp; GitHub CLI logins" data-action="scanAccounts">
+          ${Icons.search}
+        </button>
+        <button type="button" class="icon-btn-ghost" title="Refresh state" data-action="refresh">
+          ${Icons.refresh}
+        </button>
+      </div>
+    </div>
     <div class="card card-active-identity">
       <div class="card-header-row">
         <div class="card-title-group">
