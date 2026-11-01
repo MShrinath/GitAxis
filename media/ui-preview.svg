@@ -1,0 +1,107 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 440" width="720" height="440" fill="none">
+  <defs>
+    <style>
+      .bg { fill: #181818; }
+      .header-bg { fill: #1f1f1f; }
+      .card-bg { fill: #222222; }
+      .card-active-bg { fill: #1c2834; }
+      .border { stroke: #333333; stroke-width: 1; }
+      .border-active { stroke: #1f6feb; stroke-width: 1.5; }
+      .text-title { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size: 13px; font-weight: 600; fill: #cccccc; }
+      .text-label { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size: 11px; font-weight: 600; fill: #8b949e; letter-spacing: 0.5px; }
+      .text-body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size: 12px; fill: #e6edf3; }
+      .text-muted { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size: 11px; fill: #8b949e; }
+      .text-code { font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace; font-size: 11px; fill: #79c0ff; }
+      .btn-primary { fill: #238636; }
+      .btn-secondary { fill: #30363d; }
+      .btn-text { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size: 11px; font-weight: 500; fill: #ffffff; text-anchor: middle; dominant-baseline: central; }
+      .badge-verified { fill: #1f6feb; }
+      .dot-green { fill: #3fb950; }
+      .dot-gray { fill: #6e7681; }
+    </style>
+  </defs>
+
+  <!-- Main Window Frame -->
+  <rect x="0" y="0" width="720" height="440" rx="8" class="bg border"/>
+
+  <!-- Window Header -->
+  <rect x="0" y="0" width="720" height="36" rx="8" class="header-bg"/>
+  <rect x="0" y="28" width="720" height="8" class="header-bg"/>
+  <line x1="0" y1="36" x2="720" y2="36" stroke="#2d2d2d" stroke-width="1"/>
+
+  <!-- Window Dots -->
+  <circle cx="20" cy="18" r="5" fill="#ed6a5e"/>
+  <circle cx="36" cy="18" r="5" fill="#f4bf4f"/>
+  <circle cx="52" cy="18" r="5" fill="#61c554"/>
+  <text x="76" y="22" class="text-title">GitAxis Control Center</text>
+
+  <!-- Header Action Buttons -->
+  <rect x="635" y="9" width="32" height="18" rx="3" class="btn-secondary"/>
+  <text x="651" y="18" class="btn-text">Scan</text>
+  <rect x="675" y="9" width="35" height="18" rx="3" class="btn-secondary"/>
+  <text x="692" y="18" class="btn-text">Sync</text>
+
+  <!-- Left Sidebar Section: Active Identity -->
+  <text x="24" y="60" class="text-label">ACTIVE IDENTITY</text>
+  <rect x="24" y="70" width="672" height="74" rx="6" class="card-active-bg border-active"/>
+
+  <circle cx="44" cy="94" r="5" class="dot-green"/>
+  <text x="58" y="98" class="text-body" font-weight="600">Work Profile</text>
+  <rect x="140" y="86" width="58" height="18" rx="9" fill="#1f6feb" fill-opacity="0.2"/>
+  <text x="169" y="95" class="btn-text" fill="#58a6ff" font-size="10">Verified</text>
+
+  <text x="44" y="124" class="text-muted">Author:</text>
+  <text x="90" y="124" class="text-body">Jane Doe &lt;jane@company.com&gt;</text>
+  <text x="320" y="124" class="text-muted">Remote:</text>
+  <text x="372" y="124" class="text-code">https://jane-work@github.com/company/project.git</text>
+
+  <!-- Profiles Header -->
+  <text x="24" y="172" class="text-label">CONFIGURED PROFILES (3)</text>
+  <rect x="590" y="158" width="106" height="20" rx="3" class="btn-primary"/>
+  <text x="643" y="168" class="btn-text">+ Add Profile</text>
+
+  <!-- Profile 1: Work (Active) -->
+  <rect x="24" y="186" width="672" height="52" rx="5" class="card-bg border"/>
+  <circle cx="44" cy="212" r="4" class="dot-green"/>
+  <text x="58" y="216" class="text-body" font-weight="600">Work</text>
+  <text x="110" y="216" class="text-muted">jane-work &bull; GCM / PAT &bull; ~/work/**</text>
+  <rect x="548" y="202" width="66" height="20" rx="3" fill="#238636" fill-opacity="0.2"/>
+  <text x="581" y="212" class="btn-text" fill="#3fb950">Active</text>
+  <rect x="622" y="202" width="64" height="20" rx="3" class="btn-secondary"/>
+  <text x="654" y="212" class="btn-text">Edit</text>
+
+  <!-- Profile 2: Personal -->
+  <rect x="24" y="244" width="672" height="52" rx="5" class="card-bg border"/>
+  <circle cx="44" cy="270" r="4" class="dot-gray"/>
+  <text x="58" y="274" class="text-body" font-weight="600">Personal</text>
+  <text x="130" y="274" class="text-muted">janedoe &bull; SSH (~/.ssh/id_ed25519) &bull; ~/personal/**</text>
+  <rect x="548" y="260" width="66" height="20" rx="3" class="btn-secondary"/>
+  <text x="581" y="270" class="btn-text">Switch</text>
+  <rect x="622" y="260" width="64" height="20" rx="3" class="btn-secondary"/>
+  <text x="654" y="270" class="btn-text">Edit</text>
+
+  <!-- Profile 3: OpenSource -->
+  <rect x="24" y="302" width="672" height="52" rx="5" class="card-bg border"/>
+  <circle cx="44" cy="328" r="4" class="dot-gray"/>
+  <text x="58" y="332" class="text-body" font-weight="600">OpenSource</text>
+  <text x="145" y="332" class="text-muted">janedoe-oss &bull; PAT Token (Public repos only)</text>
+  <rect x="548" y="318" width="66" height="20" rx="3" class="btn-secondary"/>
+  <text x="581" y="328" class="btn-text">Switch</text>
+  <rect x="622" y="318" width="64" height="20" rx="3" class="btn-secondary"/>
+  <text x="654" y="328" class="btn-text">Edit</text>
+
+  <!-- Discovered Accounts Header -->
+  <text x="24" y="380" class="text-label">DISCOVERED LOCAL ACCOUNTS (1)</text>
+  <rect x="24" y="390" width="320" height="26" rx="4" fill="#2d333b" stroke="#444c56" stroke-width="1"/>
+  <text x="36" y="407" class="text-body" font-size="11">contractor-user (gh cli)</text>
+  <rect x="240" y="394" width="96" height="18" rx="3" class="btn-secondary"/>
+  <text x="288" y="403" class="btn-text" font-size="10">+ Import Profile</text>
+
+  <!-- Bottom VS Code Status Bar -->
+  <rect x="0" y="418" width="720" height="22" rx="0" fill="#007acc"/>
+  <rect x="0" y="432" width="720" height="8" rx="8" fill="#007acc"/>
+  <text x="16" y="433" class="btn-text" font-size="11" font-weight="600">GitAxis: Work Profile (jane-work)</text>
+  <text x="220" y="433" class="btn-text" font-size="11">Matches Remote</text>
+  <text x="610" y="433" class="btn-text" font-size="11">Ctrl+Alt+G</text>
+  <text x="680" y="433" class="btn-text" font-size="11">v0.11.1</text>
+</svg>
