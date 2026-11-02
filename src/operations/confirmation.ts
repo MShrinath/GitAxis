@@ -15,7 +15,7 @@ export class ConfirmationHandler {
   }
 
   public async requestConfirmation(reason: string, warning?: string): Promise<boolean> {
-    const fullMessage = `⚠️ Destructive Operation: ${reason}`;
+    const fullMessage = `Destructive Operation: ${reason}`;
     return this.promptFn(fullMessage, warning);
   }
 }

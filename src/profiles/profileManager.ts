@@ -158,8 +158,7 @@ export class ProfileManager {
       }
 
       // Normalize host by removing protocol and trailing slashes
-      const rawHost = profile.github?.host?.trim() || 'github.com';
-      const host = rawHost.replace(/^https?:\/\//i, '').replace(/\/+$/, '') || 'github.com';
+      const host = Platform.normalizeGitHubHost(profile.github?.host);
       const ghUsername = profile.github?.username?.trim();
 
       // 3. GCM Account Alignment: Set credential.https://${host}.username in repository git config (and globally if scope is global) using the profile's GitHub username.
@@ -232,20 +231,7 @@ export class ProfileManager {
       // 5. SSH Key Alignment: If the profile authentication is SSH with an sshKeyPath, set core.sshCommand to use that key; unset it if switching to a non-SSH profile.
       const rawSshKeyPath = (profile.authentication as { sshKeyPath?: string })?.sshKeyPath?.trim();
       if (profile.authentication.type === 'ssh' && rawSshKeyPath) {
-        const cleanKeyPath = rawSshKeyPath.replace(/^["']|["']$/g, '').trim();
-        let resolvedKeyPath = cleanKeyPath;
-        if (resolvedKeyPath.startsWith('~')) {
-          resolvedKeyPath = path.join(os.homedir(), resolvedKeyPath.slice(1));
-        }
-        const normalizedKeyPath = Platform.normalizePath(resolvedKeyPath);
-        let sshCommand: string;
-        if (cleanKeyPath.startsWith('ssh ')) {
-          sshCommand = cleanKeyPath.includes('-o IdentitiesOnly=yes')
-            ? cleanKeyPath
-            : `${cleanKeyPath} -o IdentitiesOnly=yes`;
-        } else {
-          sshCommand = `ssh -i "${normalizedKeyPath}" -o IdentitiesOnly=yes`;
-        }
+        const sshCommand = Platform.resolveSshCommand(rawSshKeyPath, os.homedir(), false);
 
         if (isRepo && targetPath) {
           await this.gitClient.setLocalConfig(targetPath, 'core.sshCommand', sshCommand);

@@ -1,9 +1,8 @@
-import * as crypto from 'crypto';
 import * as vscode from 'vscode';
 import { OperationManager } from '../operations/operationManager';
-import { createOperation } from '../contracts';
 import { Validation } from '../utils/validation';
 import { getActiveWorkspaceRepoPath } from '../utils/workspace';
+import { runLocalRepoOp } from './commandHelpers';
 
 export function registerBranchCommands(
   context: vscode.ExtensionContext,
@@ -32,24 +31,15 @@ export function registerBranchCommands(
       );
       if (!checkout) return;
 
-      const op = createOperation({
-        id: crypto.randomUUID(),
-        type: 'git.branch.create',
-        input: { repositoryPath: repoPath, name: name.trim(), checkout: checkout.value },
-        target: { kind: 'local-repository', path: repoPath },
-        safety: 'mutating',
-        confirmation: { required: false },
-        createdAt: new Date().toISOString(),
-        initiatedBy: 'command-palette',
-      });
-
-      const res = await operationManager.execute(op);
-      if (res.success) {
-        vscode.window.showInformationMessage(`Branch "${name}" created.`);
-      } else {
-        vscode.window.showErrorMessage(res.error?.userMessage || 'Failed to create branch');
-      }
-      onRefresh?.();
+      await runLocalRepoOp(
+        operationManager,
+        repoPath,
+        'git.branch.create',
+        { repositoryPath: repoPath, name: name.trim(), checkout: checkout.value },
+        `Branch "${name}" created.`,
+        'Failed to create branch',
+        onRefresh
+      );
     })
   );
 
@@ -65,24 +55,15 @@ export function registerBranchCommands(
       });
       if (!ref) return;
 
-      const op = createOperation({
-        id: crypto.randomUUID(),
-        type: 'git.checkout',
-        input: { repositoryPath: repoPath, ref: ref.trim() },
-        target: { kind: 'local-repository', path: repoPath },
-        safety: 'mutating',
-        confirmation: { required: false },
-        createdAt: new Date().toISOString(),
-        initiatedBy: 'command-palette',
-      });
-
-      const res = await operationManager.execute(op);
-      if (res.success) {
-        vscode.window.showInformationMessage(`Checked out "${ref}".`);
-      } else {
-        vscode.window.showErrorMessage(res.error?.userMessage || 'Checkout failed');
-      }
-      onRefresh?.();
+      await runLocalRepoOp(
+        operationManager,
+        repoPath,
+        'git.checkout',
+        { repositoryPath: repoPath, ref: ref.trim() },
+        `Checked out "${ref}".`,
+        'Checkout failed',
+        onRefresh
+      );
     })
   );
 
@@ -98,24 +79,15 @@ export function registerBranchCommands(
       });
       if (!branch) return;
 
-      const op = createOperation({
-        id: crypto.randomUUID(),
-        type: 'git.merge',
-        input: { repositoryPath: repoPath, branch: branch.trim() },
-        target: { kind: 'local-repository', path: repoPath },
-        safety: 'mutating',
-        confirmation: { required: false },
-        createdAt: new Date().toISOString(),
-        initiatedBy: 'command-palette',
-      });
-
-      const res = await operationManager.execute(op);
-      if (res.success) {
-        vscode.window.showInformationMessage(`Merged "${branch}" successfully.`);
-      } else {
-        vscode.window.showErrorMessage(res.error?.userMessage || 'Merge failed');
-      }
-      onRefresh?.();
+      await runLocalRepoOp(
+        operationManager,
+        repoPath,
+        'git.merge',
+        { repositoryPath: repoPath, branch: branch.trim() },
+        `Merged "${branch}" successfully.`,
+        'Merge failed',
+        onRefresh
+      );
     })
   );
 
@@ -131,24 +103,15 @@ export function registerBranchCommands(
       });
       if (!onto) return;
 
-      const op = createOperation({
-        id: crypto.randomUUID(),
-        type: 'git.rebase',
-        input: { repositoryPath: repoPath, onto: onto.trim() },
-        target: { kind: 'local-repository', path: repoPath },
-        safety: 'mutating',
-        confirmation: { required: false },
-        createdAt: new Date().toISOString(),
-        initiatedBy: 'command-palette',
-      });
-
-      const res = await operationManager.execute(op);
-      if (res.success) {
-        vscode.window.showInformationMessage(`Rebased onto "${onto}" successfully.`);
-      } else {
-        vscode.window.showErrorMessage(res.error?.userMessage || 'Rebase failed');
-      }
-      onRefresh?.();
+      await runLocalRepoOp(
+        operationManager,
+        repoPath,
+        'git.rebase',
+        { repositoryPath: repoPath, onto: onto.trim() },
+        `Rebased onto "${onto}" successfully.`,
+        'Rebase failed',
+        onRefresh
+      );
     })
   );
 }

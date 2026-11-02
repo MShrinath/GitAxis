@@ -20,6 +20,7 @@ import { ExtraheaderMigration } from './migrations/extraheaderMigration';
 import { AccountVerifier } from './auth/accountVerifier';
 import { GitRepository } from './contracts';
 import { logger } from './utils/logger';
+import { getWorkspaceRepoPath } from './utils/workspace';
 
 let statusBarItem: vscode.StatusBarItem;
 const promptedRepos = new Set<string>();
@@ -111,16 +112,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     return choice === continueBtn;
   });
 
-  // Helper: Get active repository path from active editor or workspace folders
-  const getActiveRepositoryPath = (): string | undefined => {
-    const activeUri = vscode.window.activeTextEditor?.document.uri;
-    if (activeUri && activeUri.scheme === 'file') {
-      const folder = vscode.workspace.getWorkspaceFolder(activeUri);
-      if (folder) return folder.uri.fsPath;
-    }
-    return vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-  };
-
   // 3. Status Bar Item (Section 2)
   statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
   statusBarItem.command = 'gitaxis.switchProfile';
@@ -128,7 +119,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   context.subscriptions.push(statusBarItem);
 
   const updateStatusBar = async () => {
-    const currentPath = getActiveRepositoryPath();
+    const currentPath = getWorkspaceRepoPath();
     let repo: GitRepository | undefined;
     let branchName: string | undefined;
     let repoEmail: string | undefined;
@@ -373,7 +364,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       }
       activeEditorDebounceTimer = setTimeout(async () => {
         try {
-          const currentPath = getActiveRepositoryPath();
+          const currentPath = getWorkspaceRepoPath();
           if (currentPath !== lastActiveRepoPath) {
             lastActiveRepoPath = currentPath;
             await updateStatusBar();

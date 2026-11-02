@@ -2,8 +2,87 @@ import * as crypto from 'crypto';
 import * as vscode from 'vscode';
 import { OperationManager } from '../operations/operationManager';
 import { RepositoryDiscovery } from '../discovery/repositoryDiscovery';
-import { createOperation } from '../contracts';
+import { createOperation, GitRemote, GitRepository } from '../contracts';
 import { getActiveWorkspaceRepoPath } from '../utils/workspace';
+
+interface ValidatedGitHubRemote extends GitRemote {
+  owner: string;
+  repository: string;
+}
+
+async function resolveGitHubRemote(
+  repoDiscovery: RepositoryDiscovery,
+  warningMsg = 'No GitHub remote configured.'
+): Promise<{ repoPath: string; origin: ValidatedGitHubRemote; repo: GitRepository } | undefined> {
+  const repoPath = await getActiveWorkspaceRepoPath();
+  if (!repoPath) return undefined;
+
+  const repo = await repoDiscovery.detectRepository(repoPath);
+  const origin = repo?.remotes.find(r => r.name === 'origin') || repo?.remotes[0];
+
+  if (!origin || !origin.owner || !origin.repository) {
+    vscode.window.showWarningMessage(warningMsg);
+    return undefined;
+  }
+
+  return { repoPath, origin: origin as ValidatedGitHubRemote, repo: repo! };
+}
+
+function createGitHubListOp(type: 'github.actions.list' | 'github.release.list', origin: ValidatedGitHubRemote) {
+  return createOperation({
+    id: crypto.randomUUID(),
+    type,
+    input: {
+      host: origin.host,
+      owner: origin.owner,
+      repository: origin.repository,
+    },
+    target: {
+      kind: 'github-repository',
+      host: origin.host || 'github.com',
+      owner: origin.owner,
+      repository: origin.repository,
+    },
+    safety: 'read-only',
+    confirmation: { required: false },
+    createdAt: new Date().toISOString(),
+    initiatedBy: 'command-palette',
+  } as any);
+}
+
+async function showGitHubResourceList(
+  operationManager: OperationManager,
+  op: any,
+  progressTitle: string,
+  emptyMessage: string,
+  failedMessage: string,
+  pickerTitlePrefix: string,
+  placeHolder: string,
+  formatItem: (item: any) => { label: string; description: string; detail: string; htmlUrl?: string }
+): Promise<void> {
+  vscode.window.withProgress(
+    { location: vscode.ProgressLocation.Notification, title: progressTitle },
+    async () => {
+      const res = await operationManager.execute<any[]>(op);
+      if (res.success && res.data) {
+        if (res.data.length === 0) {
+          vscode.window.showInformationMessage(emptyMessage);
+          return;
+        }
+        const items = res.data.map(formatItem);
+        const selected = await vscode.window.showQuickPick(items, {
+          title: `${pickerTitlePrefix} (${res.data.length})`,
+          placeHolder,
+        });
+        if (selected?.htmlUrl) {
+          await vscode.env.openExternal(vscode.Uri.parse(selected.htmlUrl));
+        }
+      } else {
+        vscode.window.showErrorMessage(res.error?.userMessage || failedMessage);
+      }
+    }
+  );
+}
 
 export function registerGitHubCommands(
   context: vscode.ExtensionContext,
@@ -13,19 +92,11 @@ export function registerGitHubCommands(
   // Open GitHub Repository in browser
   context.subscriptions.push(
     vscode.commands.registerCommand('gitaxis.openGitHubRepo', async () => {
-      const repoPath = await getActiveWorkspaceRepoPath();
-      if (!repoPath) return;
+      const target = await resolveGitHubRemote(repoDiscovery, 'No GitHub remote found for this repository.');
+      if (!target) return;
 
-      const repo = await repoDiscovery.detectRepository(repoPath);
-      const origin = repo?.remotes.find(r => r.name === 'origin') || repo?.remotes[0];
-
-      if (!origin || !origin.owner || !origin.repository) {
-        vscode.window.showWarningMessage('No GitHub remote found for this repository.');
-        return;
-      }
-
-      const host = origin.host || 'github.com';
-      const url = `https://${host}/${origin.owner}/${origin.repository}`;
+      const host = target.origin.host || 'github.com';
+      const url = `https://${host}/${target.origin.owner}/${target.origin.repository}`;
       await vscode.env.openExternal(vscode.Uri.parse(url));
     })
   );
@@ -33,16 +104,9 @@ export function registerGitHubCommands(
   // Create GitHub Issue
   context.subscriptions.push(
     vscode.commands.registerCommand('gitaxis.createIssue', async () => {
-      const repoPath = await getActiveWorkspaceRepoPath();
-      if (!repoPath) return;
-
-      const repo = await repoDiscovery.detectRepository(repoPath);
-      const origin = repo?.remotes.find(r => r.name === 'origin') || repo?.remotes[0];
-
-      if (!origin || !origin.owner || !origin.repository) {
-        vscode.window.showWarningMessage('No GitHub remote configured.');
-        return;
-      }
+      const target = await resolveGitHubRemote(repoDiscovery);
+      if (!target) return;
+      const { origin } = target;
 
       const title = await vscode.window.showInputBox({
         title: 'Create GitHub Issue',
@@ -56,45 +120,18 @@ export function registerGitHubCommands(
         prompt: 'Enter issue description (optional)',
       });
 
-      const op = createOperation({
-        id: crypto.randomUUID(),
-        type: 'github.issue.create',
-        input: {
-          host: origin.host,
-          owner: origin.owner,
-          repository: origin.repository,
-          title: title.trim(),
-          body: body?.trim(),
-        },
-        target: {
-          kind: 'github-repository',
-          host: origin.host || 'github.com',
-          owner: origin.owner,
-          repository: origin.repository,
-        },
-        safety: 'mutating',
-        confirmation: { required: false },
-        createdAt: new Date().toISOString(),
-        initiatedBy: 'command-palette',
+      const op = createGitHubRepoOp('github.issue.create', origin, {
+        title: title.trim(),
+        body: body?.trim(),
       });
 
-      vscode.window.withProgress(
-        { location: vscode.ProgressLocation.Notification, title: 'GitAxis: Creating GitHub issue...' },
-        async () => {
-          const res = await operationManager.execute<any>(op);
-          if (res.success && res.data) {
-            const action = 'Open Issue';
-            const choice = await vscode.window.showInformationMessage(
-              `Issue #${res.data.number} created: ${res.data.title}`,
-              action
-            );
-            if (choice === action && res.data.htmlUrl) {
-              await vscode.env.openExternal(vscode.Uri.parse(res.data.htmlUrl));
-            }
-          } else {
-            vscode.window.showErrorMessage(res.error?.userMessage || 'Failed to create issue');
-          }
-        }
+      await runGitHubCreateOp(
+        operationManager,
+        op,
+        'GitAxis: Creating GitHub issue...',
+        d => `Issue #${d.number} created: ${d.title}`,
+        'Open Issue',
+        'Failed to create issue'
       );
     })
   );
@@ -102,17 +139,9 @@ export function registerGitHubCommands(
   // Create Pull Request
   context.subscriptions.push(
     vscode.commands.registerCommand('gitaxis.createPullRequest', async () => {
-      const repoPath = await getActiveWorkspaceRepoPath();
-      if (!repoPath) return;
-
-      const repo = await repoDiscovery.detectRepository(repoPath);
-      const origin = repo?.remotes.find(r => r.name === 'origin') || repo?.remotes[0];
-
-      if (!origin || !origin.owner || !origin.repository) {
-        vscode.window.showWarningMessage('No GitHub remote configured.');
-        return;
-      }
-
+      const target = await resolveGitHubRemote(repoDiscovery);
+      if (!target) return;
+      const { origin, repo } = target;
       const currentBranch = repo?.currentBranch || 'main';
 
       const title = await vscode.window.showInputBox({
@@ -135,47 +164,20 @@ export function registerGitHubCommands(
         prompt: 'Enter description (optional)',
       });
 
-      const op = createOperation({
-        id: crypto.randomUUID(),
-        type: 'github.pull-request.create',
-        input: {
-          host: origin.host,
-          owner: origin.owner,
-          repository: origin.repository,
-          title: title.trim(),
-          head: currentBranch,
-          base: base.trim(),
-          body: body?.trim(),
-        },
-        target: {
-          kind: 'github-repository',
-          host: origin.host || 'github.com',
-          owner: origin.owner,
-          repository: origin.repository,
-        },
-        safety: 'mutating',
-        confirmation: { required: false },
-        createdAt: new Date().toISOString(),
-        initiatedBy: 'command-palette',
+      const op = createGitHubRepoOp('github.pull-request.create', origin, {
+        title: title.trim(),
+        head: currentBranch,
+        base: base.trim(),
+        body: body?.trim(),
       });
 
-      vscode.window.withProgress(
-        { location: vscode.ProgressLocation.Notification, title: 'GitAxis: Creating Pull Request...' },
-        async () => {
-          const res = await operationManager.execute<any>(op);
-          if (res.success && res.data) {
-            const action = 'Open PR';
-            const choice = await vscode.window.showInformationMessage(
-              `Pull Request #${res.data.number} created!`,
-              action
-            );
-            if (choice === action && res.data.htmlUrl) {
-              await vscode.env.openExternal(vscode.Uri.parse(res.data.htmlUrl));
-            }
-          } else {
-            vscode.window.showErrorMessage(res.error?.userMessage || 'Failed to create pull request');
-          }
-        }
+      await runGitHubCreateOp(
+        operationManager,
+        op,
+        'GitAxis: Creating Pull Request...',
+        d => `Pull Request #${d.number} created!`,
+        'Open PR',
+        'Failed to create pull request'
       );
     })
   );
@@ -183,63 +185,24 @@ export function registerGitHubCommands(
   // View GitHub Actions
   context.subscriptions.push(
     vscode.commands.registerCommand('gitaxis.actions', async () => {
-      const repoPath = await getActiveWorkspaceRepoPath();
-      if (!repoPath) return;
+      const target = await resolveGitHubRemote(repoDiscovery);
+      if (!target) return;
 
-      const repo = await repoDiscovery.detectRepository(repoPath);
-      const origin = repo?.remotes.find(r => r.name === 'origin') || repo?.remotes[0];
-
-      if (!origin || !origin.owner || !origin.repository) {
-        vscode.window.showWarningMessage('No GitHub remote configured.');
-        return;
-      }
-
-      const op = createOperation({
-        id: crypto.randomUUID(),
-        type: 'github.actions.list',
-        input: {
-          host: origin.host,
-          owner: origin.owner,
-          repository: origin.repository,
-        },
-        target: {
-          kind: 'github-repository',
-          host: origin.host || 'github.com',
-          owner: origin.owner,
-          repository: origin.repository,
-        },
-        safety: 'read-only',
-        confirmation: { required: false },
-        createdAt: new Date().toISOString(),
-        initiatedBy: 'command-palette',
-      });
-
-      vscode.window.withProgress(
-        { location: vscode.ProgressLocation.Notification, title: 'GitAxis: Fetching GitHub Actions...' },
-        async () => {
-          const res = await operationManager.execute<any[]>(op);
-          if (res.success && res.data) {
-            if (res.data.length === 0) {
-              vscode.window.showInformationMessage('No workflow runs found.');
-              return;
-            }
-            const items = res.data.map(run => ({
-              label: `${run.status === 'completed' && run.conclusion === 'success' ? '✓' : '●'} ${run.name}`,
-              description: `Status: ${run.status} · Conclusion: ${run.conclusion || 'pending'}`,
-              detail: `Branch: ${run.headBranch || '—'}`,
-              htmlUrl: run.htmlUrl,
-            }));
-            const selected = await vscode.window.showQuickPick(items, {
-              title: `GitHub Actions Runs (${res.data.length})`,
-              placeHolder: 'Select a workflow run to view in browser',
-            });
-            if (selected?.htmlUrl) {
-              await vscode.env.openExternal(vscode.Uri.parse(selected.htmlUrl));
-            }
-          } else {
-            vscode.window.showErrorMessage(res.error?.userMessage || 'Failed to list actions');
-          }
-        }
+      const op = createGitHubListOp('github.actions.list', target.origin);
+      await showGitHubResourceList(
+        operationManager,
+        op,
+        'GitAxis: Fetching GitHub Actions...',
+        'No workflow runs found.',
+        'Failed to list actions',
+        'GitHub Actions Runs',
+        'Select a workflow run to view in browser',
+        run => ({
+          label: `${run.status === 'completed' && run.conclusion === 'success' ? '✓' : '●'} ${run.name}`,
+          description: `Status: ${run.status} · Conclusion: ${run.conclusion || 'pending'}`,
+          detail: `Branch: ${run.headBranch || '—'}`,
+          htmlUrl: run.htmlUrl,
+        })
       );
     })
   );
@@ -247,64 +210,80 @@ export function registerGitHubCommands(
   // View GitHub Releases
   context.subscriptions.push(
     vscode.commands.registerCommand('gitaxis.releases', async () => {
-      const repoPath = await getActiveWorkspaceRepoPath();
-      if (!repoPath) return;
+      const target = await resolveGitHubRemote(repoDiscovery);
+      if (!target) return;
 
-      const repo = await repoDiscovery.detectRepository(repoPath);
-      const origin = repo?.remotes.find(r => r.name === 'origin') || repo?.remotes[0];
-
-      if (!origin || !origin.owner || !origin.repository) {
-        vscode.window.showWarningMessage('No GitHub remote configured.');
-        return;
-      }
-
-      const op = createOperation({
-        id: crypto.randomUUID(),
-        type: 'github.release.list',
-        input: {
-          host: origin.host,
-          owner: origin.owner,
-          repository: origin.repository,
-        },
-        target: {
-          kind: 'github-repository',
-          host: origin.host || 'github.com',
-          owner: origin.owner,
-          repository: origin.repository,
-        },
-        safety: 'read-only',
-        confirmation: { required: false },
-        createdAt: new Date().toISOString(),
-        initiatedBy: 'command-palette',
-      });
-
-      vscode.window.withProgress(
-        { location: vscode.ProgressLocation.Notification, title: 'GitAxis: Fetching GitHub Releases...' },
-        async () => {
-          const res = await operationManager.execute<any[]>(op);
-          if (res.success && res.data) {
-            if (res.data.length === 0) {
-              vscode.window.showInformationMessage('No releases found.');
-              return;
-            }
-            const items = res.data.map(r => ({
-              label: r.name || r.tagName,
-              description: `Tag: ${r.tagName}`,
-              detail: `Published: ${r.publishedAt || 'draft'}`,
-              htmlUrl: r.htmlUrl,
-            }));
-            const selected = await vscode.window.showQuickPick(items, {
-              title: `GitHub Releases (${res.data.length})`,
-              placeHolder: 'Select a release to view in browser',
-            });
-            if (selected?.htmlUrl) {
-              await vscode.env.openExternal(vscode.Uri.parse(selected.htmlUrl));
-            }
-          } else {
-            vscode.window.showErrorMessage(res.error?.userMessage || 'Failed to list releases');
-          }
-        }
+      const op = createGitHubListOp('github.release.list', target.origin);
+      await showGitHubResourceList(
+        operationManager,
+        op,
+        'GitAxis: Fetching GitHub Releases...',
+        'No releases found.',
+        'Failed to list releases',
+        'GitHub Releases',
+        'Select a release to view in browser',
+        r => ({
+          label: r.name || r.tagName,
+          description: `Tag: ${r.tagName}`,
+          detail: `Published: ${r.publishedAt || 'draft'}`,
+          htmlUrl: r.htmlUrl,
+        })
       );
     })
   );
 }
+
+function createGitHubRepoOp(
+  type: 'github.issue.create' | 'github.pull-request.create',
+  origin: { host?: string; owner: string; repository: string },
+  input: any
+) {
+  return createOperation({
+    id: crypto.randomUUID(),
+    type,
+    input: {
+      host: origin.host,
+      owner: origin.owner,
+      repository: origin.repository,
+      ...input,
+    },
+    target: {
+      kind: 'github-repository',
+      host: origin.host || 'github.com',
+      owner: origin.owner,
+      repository: origin.repository,
+    },
+    safety: 'mutating',
+    confirmation: { required: false },
+    createdAt: new Date().toISOString(),
+    initiatedBy: 'command-palette',
+  });
+}
+
+async function runGitHubCreateOp(
+  operationManager: OperationManager,
+  op: any,
+  progressTitle: string,
+  successMessage: (data: any) => string,
+  openLabel: string,
+  fallbackError: string
+): Promise<void> {
+  await vscode.window.withProgress(
+    { location: vscode.ProgressLocation.Notification, title: progressTitle },
+    async () => {
+      const res = await operationManager.execute<any>(op);
+      if (res.success && res.data) {
+        const choice = await vscode.window.showInformationMessage(
+          successMessage(res.data),
+          openLabel
+        );
+        if (choice === openLabel && res.data.htmlUrl) {
+          await vscode.env.openExternal(vscode.Uri.parse(res.data.htmlUrl));
+        }
+      } else {
+        vscode.window.showErrorMessage(res.error?.userMessage || fallbackError);
+      }
+    }
+  );
+}
+

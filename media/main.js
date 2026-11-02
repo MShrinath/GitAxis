@@ -153,6 +153,16 @@
     }
   }
 
+  function resetPatAndScope() {
+    const patInput = document.getElementById('form-pat');
+    if (patInput) {
+      patInput.value = '';
+      patInput.placeholder = 'ghp_xxxxxxxxxxxx';
+    }
+    const radio = document.querySelector('input[name="form-scope"][value="local"]');
+    if (radio) radio.checked = true;
+  }
+
   function cancelProfileForm() {
     hideFormError();
     hideProfileForm();
@@ -162,13 +172,7 @@
     if (document.getElementById('form-git-email')) document.getElementById('form-git-email').value = '';
     if (document.getElementById('form-gh-user')) document.getElementById('form-gh-user').value = '';
     if (document.getElementById('form-host')) document.getElementById('form-host').value = 'github.com';
-    if (document.getElementById('form-pat')) {
-      const patInput = document.getElementById('form-pat');
-      patInput.value = '';
-      patInput.placeholder = 'ghp_xxxxxxxxxxxx';
-    }
-    const radio = document.querySelector('input[name="form-scope"][value="local"]');
-    if (radio) radio.checked = true;
+    resetPatAndScope();
     if (document.getElementById('form-title')) document.getElementById('form-title').innerText = 'CREATE / EDIT PROFILE';
     const submitBtn = document.getElementById('form-submit-btn');
     if (submitBtn) {
@@ -229,13 +233,7 @@
     if (document.getElementById('form-git-email')) document.getElementById('form-git-email').value = acc.git?.email || '';
     if (document.getElementById('form-gh-user')) document.getElementById('form-gh-user').value = acc.github?.username || '';
     if (document.getElementById('form-host')) document.getElementById('form-host').value = acc.github?.host || 'github.com';
-    if (document.getElementById('form-pat')) {
-      const patInput = document.getElementById('form-pat');
-      patInput.value = '';
-      patInput.placeholder = 'ghp_xxxxxxxxxxxx';
-    }
-    const radio = document.querySelector('input[name="form-scope"][value="local"]');
-    if (radio) radio.checked = true;
+    resetPatAndScope();
 
     if (document.getElementById('form-title')) {
       document.getElementById('form-title').innerText = 'IMPORT PROFILE: ' + (acc.name || 'Account');

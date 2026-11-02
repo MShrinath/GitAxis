@@ -78,6 +78,48 @@ export class AccountVerifier {
     return result;
   }
 
+  private getApiUrl(host: string): string {
+    return host === 'github.com' ? 'https://api.github.com/user' : `https://${host}/api/v3/user`;
+  }
+
+  private fetchGitHubUser(host: string, token: string): Promise<Response> {
+    return fetch(this.getApiUrl(host), {
+      headers: {
+        Authorization: `token ${token}`,
+        'User-Agent': 'GitAxis-VSCode-Extension',
+        Accept: 'application/vnd.github.v3+json',
+      },
+    });
+  }
+
+  private isUsernameMismatch(login: string, expectedUsername?: string): boolean {
+    return Boolean(expectedUsername && login.toLowerCase() !== expectedUsername.toLowerCase());
+  }
+
+  private evaluateUserLogin(
+    login: string,
+    expectedUsername: string | undefined,
+    sourceDesc: 'Token' | 'gh CLI',
+    extra?: { scopes?: string[]; expiration?: string }
+  ): VerificationResult {
+    if (this.isUsernameMismatch(login, expectedUsername)) {
+      return {
+        success: false,
+        status: 'failed',
+        login,
+        message: `${sourceDesc} authenticates as @${login}, but profile expects @${expectedUsername}.`.replace('gh CLI authenticates', 'gh CLI authenticated'),
+        ...extra,
+      };
+    }
+    return {
+      success: true,
+      status: 'verified',
+      login,
+      message: sourceDesc === 'gh CLI' ? `Authenticated as @${login} via GitHub CLI` : `Authenticated as @${login}`,
+      ...extra,
+    };
+  }
+
   private async verifyPat(
     profile: GitProfile,
     host: string,
@@ -92,16 +134,8 @@ export class AccountVerifier {
       };
     }
 
-    const apiUrl = host === 'github.com' ? 'https://api.github.com/user' : `https://${host}/api/v3/user`;
-
     try {
-      const res = await fetch(apiUrl, {
-        headers: {
-          Authorization: `token ${token}`,
-          'User-Agent': 'GitAxis-VSCode-Extension',
-          Accept: 'application/vnd.github.v3+json',
-        },
-      });
+      const res = await this.fetchGitHubUser(host, token);
 
       const scopesHeader = res.headers.get('x-oauth-scopes');
       const scopes = scopesHeader ? scopesHeader.split(',').map(s => s.trim()).filter(Boolean) : undefined;
@@ -118,27 +152,7 @@ export class AccountVerifier {
       }
 
       const user = (await res.json()) as { login: string };
-      const login = user.login;
-
-      if (expectedUsername && login.toLowerCase() !== expectedUsername.toLowerCase()) {
-        return {
-          success: false,
-          status: 'failed',
-          login,
-          message: `Token authenticates as @${login}, but profile expects @${expectedUsername}.`,
-          scopes,
-          expiration,
-        };
-      }
-
-      return {
-        success: true,
-        status: 'verified',
-        login,
-        message: `Authenticated as @${login}`,
-        scopes,
-        expiration,
-      };
+      return this.evaluateUserLogin(user.login, expectedUsername, 'Token', { scopes, expiration });
     } catch (err) {
       return {
         success: false,
@@ -164,38 +178,15 @@ export class AccountVerifier {
       };
     }
 
-    const apiUrl = host === 'github.com' ? 'https://api.github.com/user' : `https://${host}/api/v3/user`;
     try {
-      const res = await fetch(apiUrl, {
-        headers: {
-          Authorization: `token ${token}`,
-          'User-Agent': 'GitAxis-VSCode-Extension',
-          Accept: 'application/vnd.github.v3+json',
-        },
-      });
+      const res = await this.fetchGitHubUser(host, token);
 
       if (!res.ok) {
         return { success: false, status: 'failed', message: `GitHub CLI token returned error (${res.status}).` };
       }
 
       const user = (await res.json()) as { login: string };
-      const login = user.login;
-
-      if (expectedUsername && login.toLowerCase() !== expectedUsername.toLowerCase()) {
-        return {
-          success: false,
-          status: 'failed',
-          login,
-          message: `gh CLI authenticated as @${login}, but profile expects @${expectedUsername}.`,
-        };
-      }
-
-      return {
-        success: true,
-        status: 'verified',
-        login,
-        message: `Authenticated as @${login} via GitHub CLI`,
-      };
+      return this.evaluateUserLogin(user.login, expectedUsername, 'gh CLI');
     } catch (err) {
       return {
         success: false,

@@ -363,10 +363,7 @@ export class GitClient {
     }
     const args = ['pull'];
     if (rebase) args.push('--rebase');
-    if (remote) args.push(remote);
-    if (branch) args.push(branch);
-    const { stdout, stderr } = await this.exec(args, { cwd: repoPath, ...options });
-    return stdout || stderr;
+    return this.execRemoteBranch(repoPath, args, remote, branch, options);
   }
 
   public async push(
@@ -394,9 +391,18 @@ export class GitClient {
       args.push('--force');
     }
     if (tags) args.push('--tags');
-    args.push(remote);
-    if (branch) args.push(branch);
+    return this.execRemoteBranch(repoPath, args, remote, branch, options);
+  }
 
+  private async execRemoteBranch(
+    repoPath: string,
+    args: string[],
+    remote?: string,
+    branch?: string,
+    options?: GitExecOptions
+  ): Promise<string> {
+    if (remote) args.push(remote);
+    if (branch) args.push(branch);
     const { stdout, stderr } = await this.exec(args, { cwd: repoPath, ...options });
     return stdout || stderr;
   }
@@ -473,13 +479,17 @@ export class GitClient {
     return RepositoryParser.parseRemotes(stdout);
   }
 
-  public async addRemote(repoPath: string, name: string, url: string, options?: GitExecOptions): Promise<void> {
+  private validateRemoteAndUrl(name: string, url: string): void {
     if (!Validation.isValidRemoteName(name)) {
       throw new Error(`Invalid remote name: "${name}"`);
     }
     if (!Validation.isValidGitUrl(url)) {
       throw new Error(`Invalid remote URL: "${url}"`);
     }
+  }
+
+  public async addRemote(repoPath: string, name: string, url: string, options?: GitExecOptions): Promise<void> {
+    this.validateRemoteAndUrl(name, url);
     await this.exec(['remote', 'add', name, url], { cwd: repoPath, ...options });
   }
 
@@ -491,12 +501,7 @@ export class GitClient {
   }
 
   public async setRemoteUrl(repoPath: string, name: string, url: string, push?: boolean, options?: GitExecOptions): Promise<void> {
-    if (!Validation.isValidRemoteName(name)) {
-      throw new Error(`Invalid remote name: "${name}"`);
-    }
-    if (!Validation.isValidGitUrl(url)) {
-      throw new Error(`Invalid remote URL: "${url}"`);
-    }
+    this.validateRemoteAndUrl(name, url);
     const args = ['remote', 'set-url'];
     if (push) args.push('--push');
     args.push(name, url);

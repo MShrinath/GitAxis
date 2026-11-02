@@ -9,7 +9,7 @@ import { Platform } from '../utils/platform';
 import { Validation } from '../utils/validation';
 import { logger } from '../utils/logger';
 import { AccountVerifier } from '../auth/accountVerifier';
-import { getWorkspaceRepoPath } from '../utils/workspace';
+import { confirmGlobalGitChange, getWorkspaceRepoPath } from '../utils/workspace';
 
 const ALLOWED_COMMANDS = new Set([
   'refresh',
@@ -94,44 +94,17 @@ export class SidebarViewProvider implements vscode.WebviewViewProvider {
 
           case 'createProfileFromForm': {
             const data = message.data;
-            if (!data || typeof data !== 'object' || typeof data.name !== 'string' || typeof data.gitName !== 'string' || typeof data.gitEmail !== 'string') {
-              const msg = 'Profile Name, Git Author Name, and Git Email are required.';
-              this.view?.webview.postMessage({ command: 'saveError', error: msg });
-              vscode.window.showErrorMessage(msg);
-              break;
-            }
-            if (data.name.length > 64 || data.gitName.length > 128 || data.gitEmail.length > 256) {
-              const msg = 'Input exceeds maximum allowed length.';
-              this.view?.webview.postMessage({ command: 'saveError', error: msg });
-              vscode.window.showErrorMessage(msg);
-              break;
-            }
-            if (!Validation.isValidProfileName(data.name)) {
-              const msg = 'Please enter a valid profile name (alphanumeric, dash, underscore, dot, space, 1-64 chars).';
-              this.view?.webview.postMessage({ command: 'saveError', error: msg });
-              vscode.window.showErrorMessage(msg);
-              break;
-            }
-            if (!Validation.isValidEmail(data.gitEmail)) {
-              const msg = 'Please enter a valid Git email address.';
-              this.view?.webview.postMessage({ command: 'saveError', error: msg });
-              vscode.window.showErrorMessage(msg);
+            const valError = this.validateProfileFormData(data);
+            if (valError) {
+              this.postSaveError(valError);
               break;
             }
 
+            const baseFields = this.toProfileGitFields(data);
+            const gh = this.extractGitHubIdentity(data);
             const input: CreateProfileInput = {
-              name: data.name.trim(),
-              git: {
-                name: data.gitName.trim(),
-                email: data.gitEmail.trim(),
-                scope: data.scope === 'global' ? 'global' : 'local',
-              },
-              github: data.githubUsername && typeof data.githubUsername === 'string' && data.githubUsername.trim()
-                ? {
-                    host: typeof data.host === 'string' && data.host.trim() ? data.host.trim() : 'github.com',
-                    username: data.githubUsername.trim(),
-                  }
-                : undefined,
+              ...baseFields,
+              github: gh,
               authentication: {
                 type: data.pat && typeof data.pat === 'string' && data.pat.trim() ? 'pat' : 'none',
                 source: data.pat && typeof data.pat === 'string' && data.pat.trim() ? 'vs-code-secret-storage' : 'user-input',
@@ -142,19 +115,7 @@ export class SidebarViewProvider implements vscode.WebviewViewProvider {
 
             const patVal = typeof data.pat === 'string' ? data.pat.trim() : undefined;
             const created = await this.profileManager.createProfile(input, patVal || undefined);
-            const active = await this.profileManager.getActiveProfile();
-            if (active?.id === created.id) {
-              const activeUri = vscode.window.activeTextEditor?.document.uri;
-              const workspaceFolder = activeUri
-                ? vscode.workspace.getWorkspaceFolder(activeUri)?.uri.fsPath
-                : vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-              if (workspaceFolder) {
-                const repo = await this.repoDiscovery.detectRepository(workspaceFolder);
-                if (repo) {
-                  await this.profileManager.applyIdentityToRepository(created, repo.path);
-                }
-              }
-            }
+            await this.applyProfileIfActive(created);
             this.view?.webview.postMessage({ command: 'saveSuccess', profileId: created.id });
             vscode.window.showInformationMessage(`Profile "${created.name}" created successfully!`);
             this.onProfileChanged?.();
@@ -164,53 +125,28 @@ export class SidebarViewProvider implements vscode.WebviewViewProvider {
 
           case 'updateProfileFromForm': {
             const data = message.data;
-            if (!data || typeof data !== 'object' || typeof data.id !== 'string' || typeof data.name !== 'string' || typeof data.gitName !== 'string' || typeof data.gitEmail !== 'string') {
-              const msg = 'Profile ID, name, Git author name, and email are required.';
-              this.view?.webview.postMessage({ command: 'saveError', error: msg });
-              vscode.window.showErrorMessage(msg);
+            if (!data || typeof data !== 'object' || typeof data.id !== 'string' || data.id.length > 128) {
+              this.postSaveError('Profile ID is required.');
               break;
             }
-            if (data.id.length > 128 || data.name.length > 64 || data.gitName.length > 128 || data.gitEmail.length > 256) {
-              const msg = 'Input exceeds maximum allowed length.';
-              this.view?.webview.postMessage({ command: 'saveError', error: msg });
-              vscode.window.showErrorMessage(msg);
+            const valError = this.validateProfileFormData(data);
+            if (valError) {
+              this.postSaveError(valError);
               break;
             }
 
             const existingProfile = await this.profileManager.getProfile(data.id);
             if (!existingProfile) {
-              const msg = `Cannot update: profile "${data.id}" does not exist.`;
-              this.view?.webview.postMessage({ command: 'saveError', error: msg });
-              vscode.window.showErrorMessage(msg);
+              this.postSaveError(`Cannot update: profile "${data.id}" does not exist.`);
               break;
             }
 
-            if (!Validation.isValidProfileName(data.name)) {
-              const msg = 'Please enter a valid profile name (alphanumeric, dash, underscore, dot, space, 1-64 chars).';
-              this.view?.webview.postMessage({ command: 'saveError', error: msg });
-              vscode.window.showErrorMessage(msg);
-              break;
-            }
-            if (!Validation.isValidEmail(data.gitEmail)) {
-              const msg = 'Please enter a valid Git email address.';
-              this.view?.webview.postMessage({ command: 'saveError', error: msg });
-              vscode.window.showErrorMessage(msg);
-              break;
-            }
-
+            const baseFields = this.toProfileGitFields(data);
+            const gh = this.extractGitHubIdentity(data);
             const input: UpdateProfileInput = {
-              name: data.name.trim(),
-              git: {
-                name: data.gitName.trim(),
-                email: data.gitEmail.trim(),
-                scope: data.scope === 'global' ? 'global' : 'local',
-              },
-              github: data.githubUsername && typeof data.githubUsername === 'string' && data.githubUsername.trim()
-                ? {
-                    host: typeof data.host === 'string' && data.host.trim() ? data.host.trim() : 'github.com',
-                    username: data.githubUsername.trim(),
-                    orgs: existingProfile.github?.orgs,
-                  }
+              ...baseFields,
+              github: gh
+                ? { ...gh, orgs: existingProfile.github?.orgs }
                 : {
                     username: '',
                     host: typeof data.host === 'string' && data.host.trim() ? data.host.trim() : 'github.com',
@@ -228,19 +164,7 @@ export class SidebarViewProvider implements vscode.WebviewViewProvider {
 
             const updated = await this.profileManager.updateProfile(data.id, input, patVal || undefined);
             this.accountVerifier?.clearCache(data.id);
-            const active = await this.profileManager.getActiveProfile();
-            if (active?.id === updated.id) {
-              const activeUri = vscode.window.activeTextEditor?.document.uri;
-              const workspaceFolder = activeUri
-                ? vscode.workspace.getWorkspaceFolder(activeUri)?.uri.fsPath
-                : vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-              if (workspaceFolder) {
-                const repo = await this.repoDiscovery.detectRepository(workspaceFolder);
-                if (repo) {
-                  await this.profileManager.applyIdentityToRepository(updated, repo.path);
-                }
-              }
-            }
+            await this.applyProfileIfActive(updated);
             this.view?.webview.postMessage({ command: 'saveSuccess', profileId: updated.id });
             vscode.window.showInformationMessage(`Profile "${updated.name}" updated successfully!`);
             this.onProfileChanged?.();
@@ -249,14 +173,8 @@ export class SidebarViewProvider implements vscode.WebviewViewProvider {
           }
 
           case 'deleteProfile': {
-            if (!message.profileId || typeof message.profileId !== 'string' || message.profileId.length > 128) {
-              break;
-            }
-            const profile = await this.profileManager.getProfile(message.profileId);
-            if (!profile) {
-              vscode.window.showWarningMessage(`Cannot delete: profile "${message.profileId}" does not exist.`);
-              break;
-            }
+            const profile = await this.getValidProfileFromMessage(message, 'delete');
+            if (!profile) break;
             const profileName = profile.name || message.name || 'this profile';
             const confirm = await vscode.window.showWarningMessage(
               `Are you sure you want to delete profile "${profileName}"?`,
@@ -333,28 +251,7 @@ export class SidebarViewProvider implements vscode.WebviewViewProvider {
               break;
             }
             const raw = this.discoveredAccounts[message.index];
-            const accountToImport: CreateProfileInput = {
-              name: raw.name,
-              git: {
-                name: raw.git.name,
-                email: raw.git.email,
-                scope: raw.git.scope || 'local',
-              },
-              github: raw.github
-                ? {
-                    host: raw.github.host || 'github.com',
-                    username: raw.github.username,
-                  }
-                : undefined,
-              authentication: (raw as any).authentication || {
-                type: raw.source === 'github-cli' ? 'github-cli' : 'none',
-                source: raw.source === 'github-cli' ? 'github-cli' : 'system',
-              },
-              source: (raw.source as any) || 'system-discovery',
-              imported: true,
-              description: raw.description,
-            };
-
+            const accountToImport = this.toProfileInputFromDiscovered(raw);
             const created = await this.profileManager.createProfile(accountToImport);
             this.discoveredAccounts.splice(message.index, 1);
             vscode.window.showInformationMessage(`Profile "${created.name}" imported successfully!`);
@@ -419,25 +316,7 @@ export class SidebarViewProvider implements vscode.WebviewViewProvider {
           case 'useRecommended': {
             const state = await this.getCurrentState();
             if (state.matchResult?.recommendedProfileId) {
-              const confirmGlobalGitChange = async (): Promise<boolean> => {
-                const continueBtn = 'Continue';
-                const choice = await vscode.window.showWarningMessage(
-                  "You're about to change your global Git identity.",
-                  { modal: true, detail: "This affects repositories that don't override their local Git identity." },
-                  continueBtn
-                );
-                return choice === continueBtn;
-              };
-
-              const activeUri = vscode.window.activeTextEditor?.document.uri;
-              const workspaceFolder = activeUri
-                ? vscode.workspace.getWorkspaceFolder(activeUri)?.uri.fsPath
-                : vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-              let repoPath: string | undefined;
-              if (workspaceFolder) {
-                const repo = await this.repoDiscovery.detectRepository(workspaceFolder);
-                repoPath = repo?.path;
-              }
+              const repoPath = await this.getActiveRepoPath();
               await this.profileManager.switchProfile(
                 state.matchResult.recommendedProfileId,
                 repoPath,
@@ -450,24 +329,10 @@ export class SidebarViewProvider implements vscode.WebviewViewProvider {
           }
 
           case 'verifyProfile': {
-            if (!message.profileId || typeof message.profileId !== 'string' || message.profileId.length > 128) {
-              break;
-            }
-            const profile = await this.profileManager.getProfile(message.profileId);
-            if (!profile) {
-              vscode.window.showWarningMessage(`Cannot verify: profile "${message.profileId}" does not exist.`);
-              break;
-            }
+            const profile = await this.getValidProfileFromMessage(message, 'verify');
+            if (!profile) break;
             if (this.accountVerifier) {
-              const activeUri = vscode.window.activeTextEditor?.document.uri;
-              const workspaceFolder = activeUri && activeUri.scheme === 'file'
-                ? vscode.workspace.getWorkspaceFolder(activeUri)?.uri.fsPath
-                : vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-              let repoPath: string | undefined;
-              if (workspaceFolder) {
-                const repo = await this.repoDiscovery.detectRepository(workspaceFolder);
-                repoPath = repo?.path;
-              }
+              const repoPath = await this.getActiveRepoPath();
               const res = await this.accountVerifier.verifyProfile(profile, repoPath, { force: true, onDemand: true });
               this.view?.webview.postMessage({
                 command: 'verificationResult',
@@ -499,27 +364,7 @@ export class SidebarViewProvider implements vscode.WebviewViewProvider {
     const toImport = [...this.discoveredAccounts];
     let count = 0;
     for (const raw of toImport) {
-      const accountToImport: CreateProfileInput = {
-        name: raw.name,
-        git: {
-          name: raw.git.name,
-          email: raw.git.email,
-          scope: raw.git.scope || 'local',
-        },
-        github: raw.github
-          ? {
-              host: raw.github.host || 'github.com',
-              username: raw.github.username,
-            }
-          : undefined,
-        authentication: (raw as any).authentication || {
-          type: raw.source === 'github-cli' ? 'github-cli' : 'none',
-          source: raw.source === 'github-cli' ? 'github-cli' : 'system',
-        },
-        source: (raw.source as any) || 'system-discovery',
-        imported: true,
-        description: raw.description,
-      };
+      const accountToImport = this.toProfileInputFromDiscovered(raw);
       await this.profileManager.createProfile(accountToImport);
       count++;
     }
@@ -650,5 +495,100 @@ export class SidebarViewProvider implements vscode.WebviewViewProvider {
       scanPerformed: this.scanPerformed,
       profileStatuses: this.profileStatuses,
     };
+  }
+
+  private validateProfileFormData(data: any): string | undefined {
+    if (!data || typeof data !== 'object' || typeof data.name !== 'string' || typeof data.gitName !== 'string' || typeof data.gitEmail !== 'string') {
+      return 'Profile Name, Git Author Name, and Git Email are required.';
+    }
+    if (data.name.length > 64 || data.gitName.length > 128 || data.gitEmail.length > 256) {
+      return 'Input exceeds maximum allowed length.';
+    }
+    if (!Validation.isValidProfileName(data.name)) {
+      return 'Please enter a valid profile name (alphanumeric, dash, underscore, dot, space, 1-64 chars).';
+    }
+    if (!Validation.isValidEmail(data.gitEmail)) {
+      return 'Please enter a valid Git email address.';
+    }
+    return undefined;
+  }
+
+  private postSaveError(error: string): void {
+    this.view?.webview.postMessage({ command: 'saveError', error });
+    vscode.window.showErrorMessage(error);
+  }
+
+  private async applyProfileIfActive(profile: GitProfile): Promise<void> {
+    const active = await this.profileManager.getActiveProfile();
+    if (active?.id === profile.id) {
+      const repoPath = await this.getActiveRepoPath();
+      if (repoPath) {
+        await this.profileManager.applyIdentityToRepository(profile, repoPath);
+      }
+    }
+  }
+
+  private async getActiveRepoPath(): Promise<string | undefined> {
+    const workspaceFolder = getWorkspaceRepoPath();
+    if (!workspaceFolder) return undefined;
+    const repo = await this.repoDiscovery.detectRepository(workspaceFolder);
+    return repo?.path;
+  }
+
+  private toProfileInputFromDiscovered(raw: DiscoveredAccount): CreateProfileInput {
+    return {
+      name: raw.name,
+      git: {
+        name: raw.git.name,
+        email: raw.git.email,
+        scope: raw.git.scope || 'local',
+      },
+      github: raw.github
+        ? {
+            host: raw.github.host || 'github.com',
+            username: raw.github.username,
+          }
+        : undefined,
+      authentication: (raw as any).authentication || {
+        type: raw.source === 'github-cli' ? 'github-cli' : 'none',
+        source: raw.source === 'github-cli' ? 'github-cli' : 'system',
+      },
+      source: (raw.source as any) || 'system-discovery',
+      imported: true,
+      description: raw.description,
+    };
+  }
+
+  private toProfileGitFields(data: any): { name: string; git: { name: string; email: string; scope: 'global' | 'local' } } {
+    return {
+      name: data.name.trim(),
+      git: {
+        name: data.gitName.trim(),
+        email: data.gitEmail.trim(),
+        scope: data.scope === 'global' ? 'global' : 'local',
+      },
+    };
+  }
+
+  private async getValidProfileFromMessage(message: any, actionDesc: string): Promise<GitProfile | undefined> {
+    if (!message.profileId || typeof message.profileId !== 'string' || message.profileId.length > 128) {
+      return undefined;
+    }
+    const profile = await this.profileManager.getProfile(message.profileId);
+    if (!profile) {
+      vscode.window.showWarningMessage(`Cannot ${actionDesc}: profile "${message.profileId}" does not exist.`);
+      return undefined;
+    }
+    return profile;
+  }
+
+  private extractGitHubIdentity(data: any): { host: string; username: string } | undefined {
+    if (typeof data.githubUsername === 'string' && data.githubUsername.trim()) {
+      return {
+        host: typeof data.host === 'string' && data.host.trim() ? data.host.trim() : 'github.com',
+        username: data.githubUsername.trim(),
+      };
+    }
+    return undefined;
   }
 }

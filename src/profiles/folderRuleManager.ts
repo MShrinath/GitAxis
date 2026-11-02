@@ -190,29 +190,13 @@ export class FolderRuleManager {
     // SSH core.sshCommand
     const rawSshKeyPath = (profile.authentication as { sshKeyPath?: string })?.sshKeyPath?.trim();
     if (profile.authentication.type === 'ssh' && rawSshKeyPath) {
-      const cleanKeyPath = rawSshKeyPath.replace(/^["']|["']$/g, '').trim();
-      let resolvedKeyPath = cleanKeyPath;
-      if (resolvedKeyPath.startsWith('~')) {
-        resolvedKeyPath = path.join(this.homedir, resolvedKeyPath.slice(1));
-      }
-      const normalizedKeyPath = Platform.normalizePath(resolvedKeyPath);
-      let sshCommand: string;
-      if (cleanKeyPath.startsWith('ssh ')) {
-        const withOpts = cleanKeyPath.includes('-o IdentitiesOnly=yes')
-          ? cleanKeyPath
-          : `${cleanKeyPath} -o IdentitiesOnly=yes`;
-        sshCommand = withOpts.replace(/"/g, '\\"');
-      } else {
-        sshCommand = `ssh -i \\"${normalizedKeyPath}\\" -o IdentitiesOnly=yes`;
-      }
-
+      const sshCommand = Platform.resolveSshCommand(rawSshKeyPath, this.homedir, true);
       lines.push(`[core]`);
       lines.push(`\tsshCommand = ${sshCommand}`);
     }
 
     // Credential username
-    const rawHost = profile.github?.host?.trim() || 'github.com';
-    const host = rawHost.replace(/^https?:\/\//i, '').replace(/\/+$/, '') || 'github.com';
+    const host = Platform.normalizeGitHubHost(profile.github?.host);
     const ghUsername = profile.github?.username?.trim();
     if (ghUsername && Validation.isValidHost(host)) {
       lines.push(`[credential "https://${host}"]`);
@@ -241,20 +225,11 @@ export class FolderRuleManager {
 
       const rawSshKeyPath = (profile.authentication as { sshKeyPath?: string })?.sshKeyPath?.trim();
       if (profile.authentication.type === 'ssh' && rawSshKeyPath) {
-        const cleanKeyPath = rawSshKeyPath.replace(/^["']|["']$/g, '').trim();
-        let resolvedKeyPath = cleanKeyPath;
-        if (resolvedKeyPath.startsWith('~')) {
-          resolvedKeyPath = path.join(this.homedir, resolvedKeyPath.slice(1));
-        }
-        const normalizedKeyPath = Platform.normalizePath(resolvedKeyPath);
-        const sshCommand = cleanKeyPath.startsWith('ssh ')
-          ? (cleanKeyPath.includes('-o IdentitiesOnly=yes') ? cleanKeyPath : `${cleanKeyPath} -o IdentitiesOnly=yes`)
-          : `ssh -i "${normalizedKeyPath}" -o IdentitiesOnly=yes`;
+        const sshCommand = Platform.resolveSshCommand(rawSshKeyPath, this.homedir, false);
         runGitConfig('core.sshCommand', sshCommand);
       }
 
-      const rawHost = profile.github?.host?.trim() || 'github.com';
-      const host = rawHost.replace(/^https?:\/\//i, '').replace(/\/+$/, '') || 'github.com';
+      const host = Platform.normalizeGitHubHost(profile.github?.host);
       const ghUsername = profile.github?.username?.trim();
       if (ghUsername && Validation.isValidHost(host)) {
         runGitConfig(`credential.https://${host}.username`, ghUsername);

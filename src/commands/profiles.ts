@@ -6,6 +6,7 @@ import { AuthenticationType, CreateProfileInput, GitIdentityScope } from '../con
 import { Validation } from '../utils/validation';
 import { logger } from '../utils/logger';
 import { AccountVerifier } from '../auth/accountVerifier';
+import { confirmGlobalGitChange, getWorkspaceRepoPath } from '../utils/workspace';
 
 export function registerProfileCommands(
   context: vscode.ExtensionContext,
@@ -17,10 +18,7 @@ export function registerProfileCommands(
 ): void {
   // Helper: get current repository root
   const getCurrentRepoRoot = async (): Promise<string | undefined> => {
-    const activeUri = vscode.window.activeTextEditor?.document.uri;
-    const folder = activeUri && activeUri.scheme === 'file'
-      ? vscode.workspace.getWorkspaceFolder(activeUri)?.uri.fsPath
-      : vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    const folder = getWorkspaceRepoPath();
     if (!folder) return undefined;
     try {
       if (await gitClient.isRepository(folder)) {
@@ -131,16 +129,6 @@ export function registerProfileCommands(
       }
 
       if (!selectedId) return;
-
-      const confirmGlobalGitChange = async (): Promise<boolean> => {
-        const continueBtn = 'Continue';
-        const choice = await vscode.window.showWarningMessage(
-          "You're about to change your global Git identity.",
-          { modal: true, detail: "This affects repositories that don't override their local Git identity." },
-          continueBtn
-        );
-        return choice === continueBtn;
-      };
 
       try {
         const switched = await profileManager.switchProfile(selectedId, repoRoot, confirmGlobalGitChange);
@@ -369,10 +357,7 @@ export function registerProfileCommands(
           });
           const active = await profileManager.getActiveProfile();
           if (active?.id === selected.profileId) {
-            const activeUri = vscode.window.activeTextEditor?.document.uri;
-            const workspaceFolder = activeUri
-              ? vscode.workspace.getWorkspaceFolder(activeUri)?.uri.fsPath
-              : vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+            const workspaceFolder = getWorkspaceRepoPath();
             if (workspaceFolder) {
               await profileManager.applyIdentityToRepository(updated, workspaceFolder);
             }
