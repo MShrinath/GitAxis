@@ -100,3 +100,17 @@ export async function getActiveWorkspaceRepoPath(
 
   return defaultFolder;
 }
+
+/**
+ * Prompts the user for confirmation when about to modify global Git identity.
+ */
+export async function confirmGlobalGitChange(): Promise<boolean> {
+  const continueBtn = 'Continue';
+  const choice = await vscode.window.showWarningMessage(
+    "You're about to change your global Git identity.",
+    { modal: true, detail: "This affects repositories that don't override their local Git identity." },
+    continueBtn
+  );
+  return choice === continueBtn;
+}
+

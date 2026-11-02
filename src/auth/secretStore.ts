@@ -4,7 +4,7 @@ export interface ISecretStorage {
   delete(key: string): Thenable<void> | Promise<void>;
 }
 
-export class InMemorySecretStorage implements ISecretStorage {
+class InMemorySecretStorage implements ISecretStorage {
   private storeMap = new Map<string, string>();
 
   public async get(key: string): Promise<string | undefined> {

@@ -3,6 +3,7 @@ import * as vscode from 'vscode';
 import { OperationManager } from '../operations/operationManager';
 import { createOperation } from '../contracts';
 import { getActiveWorkspaceRepoPath } from '../utils/workspace';
+import { runCancellableProgressOp } from './commandHelpers';
 
 export function registerSyncCommands(
   context: vscode.ExtensionContext,
@@ -19,7 +20,7 @@ export function registerSyncCommands(
         [
           { label: 'Normal Push', force: false, forceWithLease: false },
           { label: 'Force with Lease (Safer)', force: false, forceWithLease: true, description: 'Only overwrites if remote matches expected ref' },
-          { label: 'Force Push ⚠️', force: true, forceWithLease: false, description: 'May overwrite remote commits' },
+          { label: 'Force Push', force: true, forceWithLease: false, description: 'May overwrite remote commits' },
         ],
         { title: 'Git Push Options' }
       );
@@ -47,29 +48,13 @@ export function registerSyncCommands(
         initiatedBy: 'command-palette',
       });
 
-      vscode.window.withProgress(
-        {
-          location: vscode.ProgressLocation.Notification,
-          title: 'GitAxis: Pushing to remote...',
-          cancellable: true,
-        },
-        async (_progress, token) => {
-          token.onCancellationRequested(() => {
-            operationManager.cancel(op.id);
-          });
-          const res = await operationManager.execute(op);
-          if (res.success) {
-            vscode.window.showInformationMessage('Push succeeded.');
-          } else {
-            vscode.window.showErrorMessage(res.error?.userMessage || 'Push failed');
-          }
-          if (res.warnings && res.warnings.length > 0) {
-            for (const w of res.warnings) {
-              vscode.window.showWarningMessage(`Warning: ${w.message}`);
-            }
-          }
-          onRefresh?.();
-        }
+      await runCancellableProgressOp(
+        operationManager,
+        op,
+        'GitAxis: Pushing to remote...',
+        'Push succeeded.',
+        'Push failed',
+        onRefresh
       );
     })
   );
@@ -80,35 +65,15 @@ export function registerSyncCommands(
       const repoPath = await getActiveWorkspaceRepoPath();
       if (!repoPath) return;
 
-      const op = createOperation({
-        id: crypto.randomUUID(),
-        type: 'git.pull',
-        input: { repositoryPath: repoPath, remote: 'origin' },
-        target: { kind: 'remote', remoteName: 'origin' },
-        safety: 'mutating',
-        confirmation: { required: false },
-        createdAt: new Date().toISOString(),
-        initiatedBy: 'command-palette',
-      });
+      const op = createRemoteSyncOp('git.pull', { repositoryPath: repoPath, remote: 'origin' });
 
-      vscode.window.withProgress(
-        {
-          location: vscode.ProgressLocation.Notification,
-          title: 'GitAxis: Pulling from remote...',
-          cancellable: true,
-        },
-        async (_progress, token) => {
-          token.onCancellationRequested(() => {
-            operationManager.cancel(op.id);
-          });
-          const res = await operationManager.execute(op);
-          if (res.success) {
-            vscode.window.showInformationMessage('Pull succeeded.');
-          } else {
-            vscode.window.showErrorMessage(res.error?.userMessage || 'Pull failed');
-          }
-          onRefresh?.();
-        }
+      await runCancellableProgressOp(
+        operationManager,
+        op,
+        'GitAxis: Pulling from remote...',
+        'Pull succeeded.',
+        'Pull failed',
+        onRefresh
       );
     })
   );
@@ -119,36 +84,29 @@ export function registerSyncCommands(
       const repoPath = await getActiveWorkspaceRepoPath();
       if (!repoPath) return;
 
-      const op = createOperation({
-        id: crypto.randomUUID(),
-        type: 'git.fetch',
-        input: { repositoryPath: repoPath, remote: 'origin', prune: true },
-        target: { kind: 'remote', remoteName: 'origin' },
-        safety: 'mutating',
-        confirmation: { required: false },
-        createdAt: new Date().toISOString(),
-        initiatedBy: 'command-palette',
-      });
+      const op = createRemoteSyncOp('git.fetch', { repositoryPath: repoPath, remote: 'origin', prune: true });
 
-      vscode.window.withProgress(
-        {
-          location: vscode.ProgressLocation.Notification,
-          title: 'GitAxis: Fetching remotes...',
-          cancellable: true,
-        },
-        async (_progress, token) => {
-          token.onCancellationRequested(() => {
-            operationManager.cancel(op.id);
-          });
-          const res = await operationManager.execute(op);
-          if (res.success) {
-            vscode.window.showInformationMessage('Fetch completed.');
-          } else {
-            vscode.window.showErrorMessage(res.error?.userMessage || 'Fetch failed');
-          }
-          onRefresh?.();
-        }
+      await runCancellableProgressOp(
+        operationManager,
+        op,
+        'GitAxis: Fetching remotes...',
+        'Fetch completed.',
+        'Fetch failed',
+        onRefresh
       );
     })
   );
+}
+
+function createRemoteSyncOp(type: 'git.pull' | 'git.fetch', input: any) {
+  return createOperation({
+    id: crypto.randomUUID(),
+    type,
+    input,
+    target: { kind: 'remote', remoteName: 'origin' },
+    safety: 'mutating',
+    confirmation: { required: false },
+    createdAt: new Date().toISOString(),
+    initiatedBy: 'command-palette',
+  });
 }

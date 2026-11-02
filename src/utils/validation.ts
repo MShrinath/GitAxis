@@ -22,13 +22,7 @@ export class Validation {
   }
 
   public static isValidTagName(tag: string): boolean {
-    if (!tag || typeof tag !== 'string') return false;
-    const trimmed = tag.trim();
-    if (trimmed.startsWith('-')) return false;
-    if (trimmed.startsWith('/') || trimmed.endsWith('/') || trimmed.endsWith('.lock')) return false;
-    if (trimmed.includes('..') || trimmed.includes('@{') || trimmed.includes('\\') || trimmed.includes(' ')) return false;
-    if (/[\x00-\x1f\x7f ~^:?*[]/.test(trimmed)) return false;
-    return /^[a-zA-Z0-9_\-\./]+$/.test(trimmed);
+    return Validation.isValidBranchName(tag);
   }
 
   public static isValidRemoteName(name: string): boolean {

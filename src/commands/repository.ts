@@ -5,6 +5,7 @@ import { createOperation, RepositoryStatus } from '../contracts';
 
 import { ProfileManager } from '../profiles/profileManager';
 import { getActiveWorkspaceRepoPath } from '../utils/workspace';
+import { createLocalRepoOp, runCancellableProgressOp, runLocalRepoOp } from './commandHelpers';
 
 export function registerRepositoryCommands(
   context: vscode.ExtensionContext,
@@ -21,16 +22,7 @@ export function registerRepositoryCommands(
         return;
       }
 
-      const op = createOperation({
-        id: crypto.randomUUID(),
-        type: 'git.status',
-        input: { repositoryPath: repoPath },
-        target: { kind: 'local-repository', path: repoPath },
-        safety: 'read-only',
-        confirmation: { required: false },
-        createdAt: new Date().toISOString(),
-        initiatedBy: 'command-palette',
-      });
+      const op = createLocalRepoOp('git.status', repoPath, { repositoryPath: repoPath }, { safety: 'read-only' });
 
       const res = await operationManager.execute<RepositoryStatus>(op);
       if (res.success && res.data) {
@@ -54,7 +46,7 @@ export function registerRepositoryCommands(
         [
           { label: 'mixed (Default)', mode: 'mixed' as const, description: 'Resets index but keeps working tree changes' },
           { label: 'soft', mode: 'soft' as const, description: 'Keeps all changes staged' },
-          { label: 'hard ⚠️', mode: 'hard' as const, description: 'DISCARDS all uncommitted changes' },
+          { label: 'hard', mode: 'hard' as const, description: 'DISCARDS all uncommitted changes' },
         ],
         { title: 'Select Reset Mode' }
       );
@@ -113,55 +105,43 @@ export function registerRepositoryCommands(
         const url = await vscode.window.showInputBox({ prompt: 'Remote URL' });
         if (!url) return;
 
-        const op = createOperation({
-          id: crypto.randomUUID(),
-          type: 'git.remote.add',
-          input: { repositoryPath: repoPath, name, url },
-          target: { kind: 'local-repository', path: repoPath },
-          safety: 'mutating',
-          confirmation: { required: false },
-          createdAt: new Date().toISOString(),
-          initiatedBy: 'command-palette',
-        });
-        const res = await operationManager.execute(op);
-        if (res.success) vscode.window.showInformationMessage(`Remote "${name}" added.`);
-        else vscode.window.showErrorMessage(res.error?.userMessage || 'Failed to add remote');
+        await runLocalRepoOp(
+          operationManager,
+          repoPath,
+          'git.remote.add',
+          { repositoryPath: repoPath, name, url },
+          `Remote "${name}" added.`,
+          'Failed to add remote',
+          onRefresh
+        );
       } else if (action.action === 'setUrl') {
         const name = await vscode.window.showInputBox({ prompt: 'Remote name', value: 'origin' });
         if (!name) return;
         const url = await vscode.window.showInputBox({ prompt: 'New Remote URL' });
         if (!url) return;
 
-        const op = createOperation({
-          id: crypto.randomUUID(),
-          type: 'git.remote.set-url',
-          input: { repositoryPath: repoPath, name, url },
-          target: { kind: 'local-repository', path: repoPath },
-          safety: 'mutating',
-          confirmation: { required: false },
-          createdAt: new Date().toISOString(),
-          initiatedBy: 'command-palette',
-        });
-        const res = await operationManager.execute(op);
-        if (res.success) vscode.window.showInformationMessage(`Remote "${name}" URL updated.`);
-        else vscode.window.showErrorMessage(res.error?.userMessage || 'Failed to update remote URL');
+        await runLocalRepoOp(
+          operationManager,
+          repoPath,
+          'git.remote.set-url',
+          { repositoryPath: repoPath, name, url },
+          `Remote "${name}" URL updated.`,
+          'Failed to update remote URL',
+          onRefresh
+        );
       } else if (action.action === 'remove') {
         const name = await vscode.window.showInputBox({ prompt: 'Remote name to remove' });
         if (!name) return;
 
-        const op = createOperation({
-          id: crypto.randomUUID(),
-          type: 'git.remote.remove',
-          input: { repositoryPath: repoPath, name },
-          target: { kind: 'local-repository', path: repoPath },
-          safety: 'mutating',
-          confirmation: { required: false },
-          createdAt: new Date().toISOString(),
-          initiatedBy: 'command-palette',
-        });
-        const res = await operationManager.execute(op);
-        if (res.success) vscode.window.showInformationMessage(`Remote "${name}" removed.`);
-        else vscode.window.showErrorMessage(res.error?.userMessage || 'Failed to remove remote');
+        await runLocalRepoOp(
+          operationManager,
+          repoPath,
+          'git.remote.remove',
+          { repositoryPath: repoPath, name },
+          `Remote "${name}" removed.`,
+          'Failed to remove remote',
+          onRefresh
+        );
       }
       onRefresh?.();
     })
@@ -186,16 +166,7 @@ export function registerRepositoryCommands(
       );
       if (!diffType) return;
 
-      const op = createOperation({
-        id: crypto.randomUUID(),
-        type: 'git.diff',
-        input: { repositoryPath: repoPath, staged: diffType.staged },
-        target: { kind: 'local-repository', path: repoPath },
-        safety: 'read-only',
-        confirmation: { required: false },
-        createdAt: new Date().toISOString(),
-        initiatedBy: 'command-palette',
-      });
+      const op = createLocalRepoOp('git.diff', repoPath, { repositoryPath: repoPath, staged: diffType.staged }, { safety: 'read-only' });
 
       const res = await operationManager.execute<string>(op);
       if (res.success) {
@@ -225,16 +196,7 @@ export function registerRepositoryCommands(
         return;
       }
 
-      const op = createOperation({
-        id: crypto.randomUUID(),
-        type: 'git.log',
-        input: { repositoryPath: repoPath, maxCount: 30 },
-        target: { kind: 'local-repository', path: repoPath },
-        safety: 'read-only',
-        confirmation: { required: false },
-        createdAt: new Date().toISOString(),
-        initiatedBy: 'command-palette',
-      });
+      const op = createLocalRepoOp('git.log', repoPath, { repositoryPath: repoPath, maxCount: 30 }, { safety: 'read-only' });
 
       const res = await operationManager.execute<any[]>(op);
       if (res.success && res.data) {
@@ -333,39 +295,31 @@ export function registerRepositoryCommands(
         initiatedBy: 'command-palette',
       });
 
-      vscode.window.withProgress(
-        {
-          location: vscode.ProgressLocation.Notification,
-          title: `GitAxis: Cloning ${url.trim()}...`,
-          cancellable: true,
-        },
-        async (_progress, token) => {
-          token.onCancellationRequested(() => {
-            operationManager.cancel(op.id);
-          });
-          const res = await operationManager.execute(op);
-          if (res.success) {
-            if (selectedProfileId) {
-              await profileManager.associateRepository(targetPath, selectedProfileId);
-              const p = await profileManager.getProfile(selectedProfileId);
-              if (p) {
-                await profileManager.applyIdentityToRepository(p, targetPath);
-              }
-            }
-            const openAction = 'Open in New Window';
-            const choice = await vscode.window.showInformationMessage(
-              `Cloned successfully into ${targetPath}`,
-              openAction
-            );
-            if (choice === openAction) {
-              await vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.file(targetPath), true);
-            }
-            onRefresh?.();
-          } else {
-            vscode.window.showErrorMessage(res.error?.userMessage || 'Clone failed');
+      const res = await runCancellableProgressOp(
+        operationManager,
+        op,
+        `GitAxis: Cloning ${url.trim()}...`
+      );
+      if (res.success) {
+        if (selectedProfileId) {
+          await profileManager.associateRepository(targetPath, selectedProfileId);
+          const p = await profileManager.getProfile(selectedProfileId);
+          if (p) {
+            await profileManager.applyIdentityToRepository(p, targetPath);
           }
         }
-      );
+        const openAction = 'Open in New Window';
+        const choice = await vscode.window.showInformationMessage(
+          `Cloned successfully into ${targetPath}`,
+          openAction
+        );
+        if (choice === openAction) {
+          await vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.file(targetPath), true);
+        }
+        onRefresh?.();
+      } else {
+        vscode.window.showErrorMessage(res.error?.userMessage || 'Clone failed');
+      }
     })
   );
 }

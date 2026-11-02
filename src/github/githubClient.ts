@@ -155,28 +155,12 @@ export class GitHubClient {
   public async listRepositories(owner?: string): Promise<GitHubRepoSummary[]> {
     const endpoint = owner ? `/users/${owner}/repos?per_page=100` : '/user/repos?per_page=100';
     const raw = await this.request<any[]>(endpoint);
-    return raw.map(r => ({
-      id: r.id,
-      name: r.name,
-      fullName: r.full_name,
-      private: r.private,
-      htmlUrl: r.html_url,
-      description: r.description,
-      defaultBranch: r.default_branch,
-    }));
+    return raw.map(r => this.toRepoSummary(r));
   }
 
   public async getRepository(owner: string, repo: string): Promise<GitHubRepoSummary> {
     const r = await this.request<any>(`/repos/${owner}/${repo}`);
-    return {
-      id: r.id,
-      name: r.name,
-      fullName: r.full_name,
-      private: r.private,
-      htmlUrl: r.html_url,
-      description: r.description,
-      defaultBranch: r.default_branch,
-    };
+    return this.toRepoSummary(r);
   }
 
   public async createRepository(name: string, description?: string, isPrivate: boolean = false, owner?: string): Promise<GitHubRepoSummary> {
@@ -189,28 +173,12 @@ export class GitHubClient {
       private: isPrivate,
       auto_init: true,
     });
-    return {
-      id: r.id,
-      name: r.name,
-      fullName: r.full_name,
-      private: r.private,
-      htmlUrl: r.html_url,
-      description: r.description,
-      defaultBranch: r.default_branch,
-    };
+    return this.toRepoSummary(r);
   }
 
   public async forkRepository(owner: string, repo: string): Promise<GitHubRepoSummary> {
     const r = await this.request<any>(`/repos/${owner}/${repo}/forks`, 'POST');
-    return {
-      id: r.id,
-      name: r.name,
-      fullName: r.full_name,
-      private: r.private,
-      htmlUrl: r.html_url,
-      description: r.description,
-      defaultBranch: r.default_branch,
-    };
+    return this.toRepoSummary(r);
   }
 
   public async deleteRepository(owner: string, repo: string): Promise<void> {
@@ -219,15 +187,7 @@ export class GitHubClient {
 
   public async listIssues(owner: string, repo: string, state: 'open' | 'closed' | 'all' = 'open'): Promise<GitHubIssueSummary[]> {
     const raw = await this.request<any[]>(`/repos/${owner}/${repo}/issues?state=${state}&per_page=50`);
-    return raw.filter(i => !i.pull_request).map(i => ({
-      id: i.id,
-      number: i.number,
-      title: i.title,
-      state: i.state,
-      htmlUrl: i.html_url,
-      user: i.user?.login || 'unknown',
-      createdAt: i.created_at,
-    }));
+    return raw.filter(i => !i.pull_request).map(i => this.toIssueSummary(i));
   }
 
   public async createIssue(owner: string, repo: string, title: string, body?: string, labels?: string[]): Promise<GitHubIssueSummary> {
@@ -236,15 +196,7 @@ export class GitHubClient {
       body,
       labels,
     });
-    return {
-      id: i.id,
-      number: i.number,
-      title: i.title,
-      state: i.state,
-      htmlUrl: i.html_url,
-      user: i.user?.login || 'unknown',
-      createdAt: i.created_at,
-    };
+    return this.toIssueSummary(i);
   }
 
   public async closeIssue(owner: string, repo: string, issueNumber: number): Promise<void> {
@@ -255,17 +207,7 @@ export class GitHubClient {
 
   public async listPullRequests(owner: string, repo: string, state: 'open' | 'closed' | 'all' = 'open'): Promise<GitHubPullRequestSummary[]> {
     const raw = await this.request<any[]>(`/repos/${owner}/${repo}/pulls?state=${state}&per_page=50`);
-    return raw.map(p => ({
-      id: p.id,
-      number: p.number,
-      title: p.title,
-      state: p.state,
-      htmlUrl: p.html_url,
-      user: p.user?.login || 'unknown',
-      headRef: p.head?.ref || '',
-      baseRef: p.base?.ref || '',
-      createdAt: p.created_at,
-    }));
+    return raw.map(p => this.toPullRequestSummary(p));
   }
 
   public async createPullRequest(owner: string, repo: string, title: string, head: string, base: string, body?: string, draft: boolean = false): Promise<GitHubPullRequestSummary> {
@@ -276,6 +218,34 @@ export class GitHubClient {
       body,
       draft,
     });
+    return this.toPullRequestSummary(p);
+  }
+
+  private toRepoSummary(r: any): GitHubRepoSummary {
+    return {
+      id: r.id,
+      name: r.name,
+      fullName: r.full_name,
+      private: r.private,
+      htmlUrl: r.html_url,
+      description: r.description,
+      defaultBranch: r.default_branch,
+    };
+  }
+
+  private toIssueSummary(i: any): GitHubIssueSummary {
+    return {
+      id: i.id,
+      number: i.number,
+      title: i.title,
+      state: i.state,
+      htmlUrl: i.html_url,
+      user: i.user?.login || 'unknown',
+      createdAt: i.created_at,
+    };
+  }
+
+  private toPullRequestSummary(p: any): GitHubPullRequestSummary {
     return {
       id: p.id,
       number: p.number,

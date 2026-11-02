@@ -1,6 +1,6 @@
 import { Validation } from './validation';
 
-export class Logger {
+class Logger {
   private static instance: Logger;
   private prefix = '[GitAxis]';
 
