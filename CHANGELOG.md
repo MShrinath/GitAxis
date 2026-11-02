@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.12.2] - 2026-11-02
+
+### Major Code Clean & Refactoring
+- **Architectural Deduplication**: Refactored command pipelines, GitHub client mappings, and platform utilities, achieving 0% code duplication across all production source files.
+- **Dead Code & Type Elimination**: Pruned unused internal helpers and legacy types with Knip, streamlining the extension bundle.
+- **Unified Platform & Command Helpers**: Centralized SSH command formatting, GitHub host normalization, and cancellable progress operations.
+
+---
+
 ## [0.12.1] - 2026-11-01
 
 ### Improved & Polish
