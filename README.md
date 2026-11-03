@@ -4,7 +4,7 @@
 
 # GitAxis — Multi-Profile Git & GitHub Manager for VS Code
 
-[![Install in VS Code](https://img.shields.io/badge/VS_Code-Install_GitAxis-007ACC?style=flat-square&logo=visualstudiocode&logoColor=white)](vscode:extension/mshrinath.gitaxis)
+[![Install in VS Code](https://img.shields.io/badge/VS_Code-Install_GitAxis-007ACC?style=flat-square&logo=visualstudiocode&logoColor=white)](https://marketplace.visualstudio.com/items?itemName=mshrinath.gitaxis)
 [![GitHub Release](https://img.shields.io/github/v/release/MShrinath/GitAxis?style=flat-square&logo=github&logoColor=white&color=0969da)](https://github.com/MShrinath/GitAxis/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-2ea44f?style=flat-square)](https://opensource.org/licenses/MIT)
 [![CI](https://github.com/MShrinath/GitAxis/actions/workflows/ci.yml/badge.svg)](https://github.com/MShrinath/GitAxis/actions/workflows/ci.yml)
