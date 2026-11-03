@@ -2,7 +2,7 @@
   "name": "gitaxis",
   "displayName": "GitAxis - Git & GitHub Profile Manager",
   "description": "Multi-profile Git and GitHub control center for VS Code",
-  "version": "0.12.2",
+  "version": "0.12.3",
   "license": "MIT",
   "publisher": "mshrinath",
   "icon": "media/icon.png",
@@ -36,9 +36,7 @@
   ],
   "main": "./dist/extension.js",
   "activationEvents": [
-    "onStartupFinished",
-    "onCommand:gitaxis.switchProfile",
-    "onCommand:gitaxis.open"
+    "onStartupFinished"
   ],
   "contributes": {
     "viewsContainers": {
@@ -174,5 +172,9 @@
     "mocha": "^10.3.0",
     "ts-node": "^10.9.2",
     "typescript": "^5.3.3"
+  },
+  "galleryBanner": {
+    "color": "#0D1117",
+    "theme": "dark"
   }
 }

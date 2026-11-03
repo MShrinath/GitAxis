@@ -1,12 +1,21 @@
 import * as crypto from 'crypto';
 import * as vscode from 'vscode';
-import { ConfirmationRequirement, createOperation, Operation, OperationResult, OperationSafety, OperationType } from '../contracts';
+import {
+  ConfirmationRequirement,
+  createOperation,
+  Operation,
+  OperationInputMap,
+  OperationResult,
+  OperationSafety,
+  OperationTargetMap,
+  OperationType,
+} from '../contracts';
 import { OperationManager } from '../operations/operationManager';
 
-export function createLocalRepoOp(
-  type: OperationType,
+export function createLocalRepoOp<TType extends OperationType>(
+  type: TType,
   repoPath: string,
-  input: any,
+  input: OperationInputMap[TType],
   options?: {
     safety?: OperationSafety;
     confirmation?: ConfirmationRequirement;
@@ -17,19 +26,19 @@ export function createLocalRepoOp(
     id: crypto.randomUUID(),
     type,
     input,
-    target: { kind: 'local-repository', path: repoPath },
+    target: { kind: 'local-repository', path: repoPath } as OperationTargetMap[TType],
     safety: options?.safety ?? 'mutating',
     confirmation,
     createdAt: new Date().toISOString(),
     initiatedBy: 'command-palette',
-  } as any) as Operation;
+  }) as unknown as Operation;
 }
 
-export async function runLocalRepoOp(
+export async function runLocalRepoOp<TType extends OperationType>(
   operationManager: OperationManager,
   repoPath: string,
-  type: OperationType,
-  input: any,
+  type: TType,
+  input: OperationInputMap[TType],
   successMessage: string,
   fallbackErrorMessage: string,
   onRefresh?: () => void,
@@ -49,9 +58,9 @@ export async function runLocalRepoOp(
   return res.success;
 }
 
-export async function runCancellableProgressOp<T = any>(
+export async function runCancellableProgressOp<T = unknown>(
   operationManager: OperationManager,
-  op: any,
+  op: Operation,
   title: string,
   successMessage?: string,
   fallbackErrorMessage?: string,

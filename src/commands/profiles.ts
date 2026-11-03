@@ -138,12 +138,13 @@ export function registerProfileCommands(
             : `Active profile switched to "${switched.name}".`
         );
         onProfileChanged?.();
-      } catch (err: any) {
-        if (err?.message?.includes('cancelled')) {
-          logger.info(`Profile switch was cancelled: ${err.message}`);
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        if (message.includes('cancelled')) {
+          logger.info(`Profile switch was cancelled: ${message}`);
           return;
         }
-        vscode.window.showErrorMessage(`Failed to switch profile: ${err?.message || String(err)}`);
+        vscode.window.showErrorMessage(`Failed to switch profile: ${message}`);
       }
     })
   );
@@ -717,7 +718,16 @@ export function registerProfileCommands(
           title: `Add Folder Rule for "${profile.name}"`,
           prompt: 'Enter folder path or pattern. Git repositories in this directory will automatically use this profile.',
           value: defaultSuggestion,
-          validateInput: val => (val.trim().length > 0 ? undefined : 'Rule cannot be empty'),
+          validateInput: val => {
+            const trimmed = val ? val.trim() : '';
+            if (trimmed.length === 0) {
+              return 'Rule cannot be empty';
+            }
+            if (!Validation.isValidFolderRule(trimmed)) {
+              return 'Rule contains invalid characters (quotes, newlines, semicolons, hashes).';
+            }
+            return undefined;
+          },
         });
         if (!newRule) return;
 

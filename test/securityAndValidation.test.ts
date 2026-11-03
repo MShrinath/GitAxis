@@ -6,6 +6,8 @@ import { PersistentProfileStore } from '../src/profiles/profileStore';
 import { HtmlBuilder, WebviewState } from '../src/webview/html';
 import { GitProfile } from '../src/contracts';
 import { FolderRuleManager } from '../src/profiles/folderRuleManager';
+import { logger } from '../src/utils/logger';
+import { GitHubClient } from '../src/github/githubClient';
 
 describe('Security & Validation (v0.4.0)', () => {
   describe('Git Argument Validation (Section 6)', () => {
@@ -315,4 +317,178 @@ describe('Security & Validation (v0.4.0)', () => {
       assert.strictEqual(localConfigs.get('http.extraheader'), 'X-Custom-CI: keep-this');
     });
   });
+
+  describe('Security Audit Fixes (SEC-01 & SEC-06)', () => {
+    describe('Folder Rule Validation & Injection Prevention (SEC-01)', () => {
+      it('should validate valid folder rules and reject dangerous characters', () => {
+        // Valid
+        assert.strictEqual(Validation.isValidFolderRule('~/work/**'), true);
+        assert.strictEqual(Validation.isValidFolderRule('/home/user/repos/**'), true);
+        assert.strictEqual(Validation.isValidFolderRule('C:/Users/Dev/projects/**'), true);
+        assert.strictEqual(Validation.isValidFolderRule('hasconfig:remote.*.url:git@github.com:acme/**'), true);
+        assert.strictEqual(Validation.isValidFolderRule('https://github.com/my-org/**'), true);
+
+        // Invalid
+        assert.strictEqual(Validation.isValidFolderRule(''), false);
+        assert.strictEqual(Validation.isValidFolderRule('   '), false);
+        assert.strictEqual(Validation.isValidFolderRule(null as any), false);
+        assert.strictEqual(Validation.isValidFolderRule(undefined as any), false);
+        assert.strictEqual(Validation.isValidFolderRule('a'.repeat(513)), false);
+
+        // Injection payloads
+        assert.strictEqual(Validation.isValidFolderRule('work/**" ]\n[core]\nsshCommand = calc.exe'), false);
+        assert.strictEqual(Validation.isValidFolderRule('work/**\r\n[core]'), false);
+        assert.strictEqual(Validation.isValidFolderRule('work/**"'), false);
+        assert.strictEqual(Validation.isValidFolderRule("work/**'"), false);
+        assert.strictEqual(Validation.isValidFolderRule('work/**; rm -rf /'), false);
+        assert.strictEqual(Validation.isValidFolderRule('work/** # comment injection'), false);
+        assert.strictEqual(Validation.isValidFolderRule('work/**\x00'), false);
+
+        // Leading and trailing newlines, carriage returns, tabs
+        assert.strictEqual(Validation.isValidFolderRule('\n~/work/**'), false);
+        assert.strictEqual(Validation.isValidFolderRule('~/work/**\n'), false);
+        assert.strictEqual(Validation.isValidFolderRule('\r~/work/**'), false);
+        assert.strictEqual(Validation.isValidFolderRule('~/work/**\r'), false);
+        assert.strictEqual(Validation.isValidFolderRule('\r\n~/work/**\r\n'), false);
+        assert.strictEqual(Validation.isValidFolderRule('~/work/**\t'), false);
+      });
+
+      it('formatIncludeIfCondition should throw on invalid injection rule', () => {
+        const frm = new FolderRuleManager();
+        const injection = 'work/**" ]\n[core]\nsshCommand = calc.exe';
+        assert.throws(() => {
+          frm.formatIncludeIfCondition(injection);
+        }, /Invalid folder rule pattern/);
+      });
+
+      it('generateIncludeIfBlock should filter out malicious folder rules without config breakout', () => {
+        const frm = new FolderRuleManager();
+        const profile: GitProfile = {
+          id: 'p-malicious',
+          name: 'AttackerProfile',
+          git: { name: 'Evil', email: 'evil@test.com', scope: 'local' },
+          authentication: { type: 'none', source: 'user-input' },
+          metadata: { source: 'manual' },
+          createdAt: '',
+          updatedAt: '',
+          folderRules: [
+            '~/safe-work/**',
+            'work/**" ]\n[core]\nsshCommand = "calc.exe"\n[includeIf "gitdir:dummy/',
+            '~/safe-personal/**',
+          ],
+        };
+
+        const block = frm.generateIncludeIfBlock([profile]);
+        assert.ok(block.includes('~/safe-work/'));
+        assert.ok(block.includes('~/safe-personal/'));
+        assert.strictEqual(block.includes('calc.exe'), false);
+        assert.strictEqual(block.includes('[core]'), false);
+      });
+    });
+
+    describe('Logger Argument & Error Sanitization (SEC-06)', () => {
+      let loggedError: any[] = [];
+      let loggedInfo: any[] = [];
+      let loggedWarn: any[] = [];
+      let loggedDebug: any[] = [];
+
+      const origError = console.error;
+      const origLog = console.log;
+      const origWarn = console.warn;
+      const origDebug = console.debug;
+
+      beforeEach(() => {
+        loggedError = [];
+        loggedInfo = [];
+        loggedWarn = [];
+        loggedDebug = [];
+        console.error = (...args: any[]) => { loggedError.push(args); };
+        console.log = (...args: any[]) => { loggedInfo.push(args); };
+        console.warn = (...args: any[]) => { loggedWarn.push(args); };
+        console.debug = (...args: any[]) => { loggedDebug.push(args); };
+      });
+
+      afterEach(() => {
+        console.error = origError;
+        console.log = origLog;
+        console.warn = origWarn;
+        console.debug = origDebug;
+      });
+
+      it('should redact sensitive tokens in error message and error object stack/message', () => {
+        const token = 'ghp_1234567890abcdef1234567890abcdef';
+        const err = new Error(`Connection failed with PAT ${token}`);
+        logger.error(`Failed request for ${token}`, err);
+
+        assert.strictEqual(loggedError.length, 1);
+        const [msg, errArg] = loggedError[0];
+        assert.strictEqual(msg.includes(token), false);
+        assert.ok(msg.includes('ghp_***[REDACTED]'));
+        assert.ok(errArg instanceof Error);
+        assert.strictEqual(errArg.message.includes(token), false);
+        assert.ok(errArg.message.includes('ghp_***[REDACTED]'));
+        if (errArg.stack) {
+          assert.strictEqual(errArg.stack.includes(token), false);
+        }
+      });
+
+      it('should redact sensitive tokens in custom error properties and cause', () => {
+        const token = 'ghp_1234567890abcdef1234567890abcdef';
+        const cause = new Error(`Root cause token: ${token}`);
+        const err: any = new Error('Top error');
+        err.stderr = `git error with ${token}`;
+        err.cause = cause;
+
+        logger.error('Wrapped error', err);
+
+        assert.strictEqual(loggedError.length, 1);
+        const [, errArg] = loggedError[0];
+        assert.strictEqual(errArg.stderr.includes(token), false);
+        assert.ok(errArg.stderr.includes('ghp_***[REDACTED]'));
+        assert.strictEqual(errArg.cause.message.includes(token), false);
+        assert.ok(errArg.cause.message.includes('***[REDACTED]'));
+      });
+
+      it('should redact sensitive tokens and credentials in info, warn, debug extra arguments', () => {
+        const sensitiveUrl = 'https://user:ghp_1234567890abcdef1234567890abcdef@github.com/org/repo';
+        logger.info('Repo sync', sensitiveUrl);
+        logger.warn('Remote check warning', sensitiveUrl);
+        logger.debug('Debug trace', sensitiveUrl);
+
+        assert.strictEqual(loggedInfo.length, 1);
+        assert.strictEqual(loggedInfo[0][1].includes('ghp_1234567890abcdef1234567890abcdef'), false);
+        assert.ok(loggedInfo[0][1].includes('***@github.com'));
+
+        assert.strictEqual(loggedWarn.length, 1);
+        assert.strictEqual(loggedWarn[0][1].includes('ghp_1234567890abcdef1234567890abcdef'), false);
+
+        assert.strictEqual(loggedDebug.length, 1);
+        assert.strictEqual(loggedDebug[0][1].includes('ghp_1234567890abcdef1234567890abcdef'), false);
+      });
+    });
+
+    describe('GitHub Client Empty API Response Safety (SEC-07)', () => {
+      it('should safely handle empty/null responses across list operations', async () => {
+        const client = new GitHubClient({ auth: { type: 'pat', credential: 'dummy' } });
+        // Mock request to return undefined (simulating 204 No Content or empty output)
+        (client as any).request = async () => undefined;
+
+        const repos = await client.listRepositories();
+        assert.deepStrictEqual(repos, []);
+
+        const issues = await client.listIssues('owner', 'repo');
+        assert.deepStrictEqual(issues, []);
+
+        const pulls = await client.listPullRequests('owner', 'repo');
+        assert.deepStrictEqual(pulls, []);
+
+        const actions = await client.listActions('owner', 'repo');
+        assert.deepStrictEqual(actions, []);
+
+        const releases = await client.listReleases('owner', 'repo');
+        assert.deepStrictEqual(releases, []);
+      });
+    });
+  });
 });
+

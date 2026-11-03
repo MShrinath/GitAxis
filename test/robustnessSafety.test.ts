@@ -21,6 +21,22 @@ describe('Robustness, Safety & Polish (v0.7.0)', () => {
     const secretStore = new SecretStore();
     authManager = new AuthManager(secretStore);
     gitClient = new GitClient('git');
+
+    // Stub git config operations to protect host system config
+    const globalConfigs = new Map<string, string>();
+    const localConfigs = new Map<string, string>();
+    gitClient.setGlobalConfig = async (key: string, value: string) => {
+      globalConfigs.set(key, value);
+    };
+    gitClient.getGlobalConfig = async (key: string) => globalConfigs.get(key);
+    gitClient.setLocalConfig = async (_path: string, key: string, value: string) => {
+      localConfigs.set(key, value);
+    };
+    gitClient.getLocalConfig = async (_path: string, key: string) => localConfigs.get(key);
+    gitClient.unsetLocalConfig = async (_path: string, key: string) => {
+      localConfigs.delete(key);
+    };
+
     profileManager = new ProfileManager(profileStore, authManager, gitClient);
     operationManager = new OperationManager(profileManager, gitClient);
   });

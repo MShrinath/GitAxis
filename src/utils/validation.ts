@@ -87,5 +87,15 @@ export class Validation {
     // Standard hostname pattern with optional port
     return /^[a-zA-Z0-9]([a-zA-Z0-9\-_]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9\-_]*[a-zA-Z0-9])?)*(:\d+)?$/.test(clean);
   }
+
+  public static isValidFolderRule(rule: string): boolean {
+    if (!rule || typeof rule !== 'string') return false;
+    // Reject newlines, quotes, semicolons, hashes, and control characters anywhere in the string to prevent gitconfig injection
+    if (/[\r\n"';#\x00-\x1f]/.test(rule)) return false;
+    const trimmed = rule.trim();
+    if (trimmed.length === 0 || trimmed.length > 512) return false;
+    return true;
+  }
 }
+
 

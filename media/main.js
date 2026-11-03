@@ -66,7 +66,6 @@
         gitEmail: document.getElementById('form-git-email')?.value || '',
         githubUsername: document.getElementById('form-gh-user')?.value || '',
         host: document.getElementById('form-host')?.value || 'github.com',
-        pat: document.getElementById('form-pat')?.value || '',
         scope: scopeEl ? scopeEl.value : 'local',
         title: document.getElementById('form-title')?.innerText || 'CREATE / EDIT PROFILE',
         submitBtnText: document.getElementById('form-submit-btn')?.innerText || 'Save Profile',
@@ -82,7 +81,7 @@
       const state = vscode.getState();
       if (!state || !state.form) return;
       const f = state.form;
-      if (f.visible && (f.name || f.gitName || f.gitEmail || f.githubUsername || f.pat || f.id)) {
+      if (f.visible && (f.name || f.gitName || f.gitEmail || f.githubUsername || f.id)) {
         showProfileForm();
         if (document.getElementById('form-profile-id')) document.getElementById('form-profile-id').value = f.id || '';
         if (document.getElementById('form-name')) document.getElementById('form-name').value = f.name || '';
@@ -90,7 +89,6 @@
         if (document.getElementById('form-git-email')) document.getElementById('form-git-email').value = f.gitEmail || '';
         if (document.getElementById('form-gh-user')) document.getElementById('form-gh-user').value = f.githubUsername || '';
         if (document.getElementById('form-host')) document.getElementById('form-host').value = f.host || 'github.com';
-        if (document.getElementById('form-pat')) document.getElementById('form-pat').value = f.pat || '';
         if (f.scope) {
           const radio = document.querySelector('input[name="form-scope"][value="' + f.scope + '"]');
           if (radio) radio.checked = true;

@@ -155,7 +155,7 @@ export class GitHubClient {
   public async listRepositories(owner?: string): Promise<GitHubRepoSummary[]> {
     const endpoint = owner ? `/users/${owner}/repos?per_page=100` : '/user/repos?per_page=100';
     const raw = await this.request<any[]>(endpoint);
-    return raw.map(r => this.toRepoSummary(r));
+    return (raw || []).map(r => this.toRepoSummary(r));
   }
 
   public async getRepository(owner: string, repo: string): Promise<GitHubRepoSummary> {
@@ -187,7 +187,7 @@ export class GitHubClient {
 
   public async listIssues(owner: string, repo: string, state: 'open' | 'closed' | 'all' = 'open'): Promise<GitHubIssueSummary[]> {
     const raw = await this.request<any[]>(`/repos/${owner}/${repo}/issues?state=${state}&per_page=50`);
-    return raw.filter(i => !i.pull_request).map(i => this.toIssueSummary(i));
+    return (raw || []).filter(i => !i?.pull_request).map(i => this.toIssueSummary(i));
   }
 
   public async createIssue(owner: string, repo: string, title: string, body?: string, labels?: string[]): Promise<GitHubIssueSummary> {
@@ -207,7 +207,7 @@ export class GitHubClient {
 
   public async listPullRequests(owner: string, repo: string, state: 'open' | 'closed' | 'all' = 'open'): Promise<GitHubPullRequestSummary[]> {
     const raw = await this.request<any[]>(`/repos/${owner}/${repo}/pulls?state=${state}&per_page=50`);
-    return raw.map(p => this.toPullRequestSummary(p));
+    return (raw || []).map(p => this.toPullRequestSummary(p));
   }
 
   public async createPullRequest(owner: string, repo: string, title: string, head: string, base: string, body?: string, draft: boolean = false): Promise<GitHubPullRequestSummary> {
@@ -268,7 +268,7 @@ export class GitHubClient {
 
   public async listActions(owner: string, repo: string): Promise<GitHubActionRunSummary[]> {
     const data = await this.request<any>(`/repos/${owner}/${repo}/actions/runs?per_page=20`);
-    const raw = data.workflow_runs || [];
+    const raw = data?.workflow_runs || [];
     return raw.map((r: any) => ({
       id: r.id,
       name: r.name || 'Workflow Run',
@@ -281,7 +281,7 @@ export class GitHubClient {
 
   public async listReleases(owner: string, repo: string): Promise<GitHubReleaseSummary[]> {
     const raw = await this.request<any[]>(`/repos/${owner}/${repo}/releases?per_page=20`);
-    return raw.map(r => ({
+    return (raw || []).map(r => ({
       id: r.id,
       tagName: r.tag_name,
       name: r.name,

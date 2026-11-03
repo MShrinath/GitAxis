@@ -305,9 +305,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
             } else if (choice === chooseAnotherBtn) {
               await vscode.commands.executeCommand('gitaxis.switchProfile');
             }
-          } catch (err: any) {
-            if (err?.message?.includes('cancelled')) {
-              logger.info(`Profile switch on unbound repo prompt was cancelled: ${err.message}`);
+          } catch (err: unknown) {
+            const message = err instanceof Error ? err.message : String(err);
+            if (message.includes('cancelled')) {
+              logger.info(`Profile switch on unbound repo prompt was cancelled: ${message}`);
               return;
             }
             logger.warn(`Error during promptUnboundRepo action: ${String(err)}`);

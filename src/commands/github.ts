@@ -2,7 +2,13 @@ import * as crypto from 'crypto';
 import * as vscode from 'vscode';
 import { OperationManager } from '../operations/operationManager';
 import { RepositoryDiscovery } from '../discovery/repositoryDiscovery';
-import { createOperation, GitRemote, GitRepository } from '../contracts';
+import { createOperation, GitRemote, GitRepository, Operation, OperationInputMap } from '../contracts';
+import {
+  GitHubActionRunSummary,
+  GitHubIssueSummary,
+  GitHubPullRequestSummary,
+  GitHubReleaseSummary,
+} from '../github/githubTypes';
 import { getActiveWorkspaceRepoPath } from '../utils/workspace';
 
 interface ValidatedGitHubRemote extends GitRemote {
@@ -28,42 +34,67 @@ async function resolveGitHubRemote(
   return { repoPath, origin: origin as ValidatedGitHubRemote, repo: repo! };
 }
 
-function createGitHubListOp(type: 'github.actions.list' | 'github.release.list', origin: ValidatedGitHubRemote) {
-  return createOperation({
-    id: crypto.randomUUID(),
-    type,
-    input: {
-      host: origin.host,
-      owner: origin.owner,
-      repository: origin.repository,
-    },
-    target: {
-      kind: 'github-repository',
-      host: origin.host || 'github.com',
-      owner: origin.owner,
-      repository: origin.repository,
-    },
-    safety: 'read-only',
-    confirmation: { required: false },
-    createdAt: new Date().toISOString(),
-    initiatedBy: 'command-palette',
-  } as any);
+function createGitHubListOp(
+  type: 'github.actions.list' | 'github.release.list',
+  origin: ValidatedGitHubRemote
+): Operation {
+  if (type === 'github.actions.list') {
+    return createOperation({
+      id: crypto.randomUUID(),
+      type: 'github.actions.list',
+      input: {
+        host: origin.host,
+        owner: origin.owner,
+        repository: origin.repository,
+      },
+      target: {
+        kind: 'github-repository',
+        host: origin.host || 'github.com',
+        owner: origin.owner,
+        repository: origin.repository,
+      },
+      safety: 'read-only',
+      confirmation: { required: false },
+      createdAt: new Date().toISOString(),
+      initiatedBy: 'command-palette',
+    });
+  } else {
+    return createOperation({
+      id: crypto.randomUUID(),
+      type: 'github.release.list',
+      input: {
+        host: origin.host,
+        owner: origin.owner,
+        repository: origin.repository,
+      },
+      target: {
+        kind: 'github-repository',
+        host: origin.host || 'github.com',
+        owner: origin.owner,
+        repository: origin.repository,
+      },
+      safety: 'read-only',
+      confirmation: { required: false },
+      createdAt: new Date().toISOString(),
+      initiatedBy: 'command-palette',
+    });
+  }
 }
 
-async function showGitHubResourceList(
+async function showGitHubResourceList<T>(
   operationManager: OperationManager,
-  op: any,
+  op: Operation,
   progressTitle: string,
   emptyMessage: string,
   failedMessage: string,
   pickerTitlePrefix: string,
   placeHolder: string,
-  formatItem: (item: any) => { label: string; description: string; detail: string; htmlUrl?: string }
+  formatItem: (item: T) => { label: string; description: string; detail: string; htmlUrl?: string }
 ): Promise<void> {
   vscode.window.withProgress(
     { location: vscode.ProgressLocation.Notification, title: progressTitle },
     async () => {
-      const res = await operationManager.execute<any[]>(op);
+      const res = await operationManager.execute<T[]>(op);
       if (res.success && res.data) {
         if (res.data.length === 0) {
           vscode.window.showInformationMessage(emptyMessage);
@@ -125,7 +156,7 @@ export function registerGitHubCommands(
         body: body?.trim(),
       });
 
-      await runGitHubCreateOp(
+      await runGitHubCreateOp<GitHubIssueSummary>(
         operationManager,
         op,
         'GitAxis: Creating GitHub issue...',
@@ -171,7 +202,7 @@ export function registerGitHubCommands(
         body: body?.trim(),
       });
 
-      await runGitHubCreateOp(
+      await runGitHubCreateOp<GitHubPullRequestSummary>(
         operationManager,
         op,
         'GitAxis: Creating Pull Request...',
@@ -189,7 +220,7 @@ export function registerGitHubCommands(
       if (!target) return;
 
       const op = createGitHubListOp('github.actions.list', target.origin);
-      await showGitHubResourceList(
+      await showGitHubResourceList<GitHubActionRunSummary>(
         operationManager,
         op,
         'GitAxis: Fetching GitHub Actions...',
@@ -214,7 +245,7 @@ export function registerGitHubCommands(
       if (!target) return;
 
       const op = createGitHubListOp('github.release.list', target.origin);
-      await showGitHubResourceList(
+      await showGitHubResourceList<GitHubReleaseSummary>(
         operationManager,
         op,
         'GitAxis: Fetching GitHub Releases...',
@@ -233,11 +264,11 @@ export function registerGitHubCommands(
   );
 }
 
-function createGitHubRepoOp(
-  type: 'github.issue.create' | 'github.pull-request.create',
+function createGitHubRepoOp<TType extends 'github.issue.create' | 'github.pull-request.create'>(
+  type: TType,
   origin: { host?: string; owner: string; repository: string },
-  input: any
-) {
+  input: Omit<OperationInputMap[TType], 'host' | 'owner' | 'repository'>
+): Operation {
   return createOperation({
     id: crypto.randomUUID(),
     type,
@@ -246,7 +277,7 @@ function createGitHubRepoOp(
       owner: origin.owner,
       repository: origin.repository,
       ...input,
-    },
+    } as OperationInputMap[TType],
     target: {
       kind: 'github-repository',
       host: origin.host || 'github.com',
@@ -257,21 +288,21 @@ function createGitHubRepoOp(
     confirmation: { required: false },
     createdAt: new Date().toISOString(),
     initiatedBy: 'command-palette',
-  });
+  }) as unknown as Operation;
 }
 
-async function runGitHubCreateOp(
+async function runGitHubCreateOp<T extends { htmlUrl?: string }>(
   operationManager: OperationManager,
-  op: any,
+  op: Operation,
   progressTitle: string,
-  successMessage: (data: any) => string,
+  successMessage: (data: T) => string,
   openLabel: string,
   fallbackError: string
 ): Promise<void> {
   await vscode.window.withProgress(
     { location: vscode.ProgressLocation.Notification, title: progressTitle },
     async () => {
-      const res = await operationManager.execute<any>(op);
+      const res = await operationManager.execute<T>(op);
       if (res.success && res.data) {
         const choice = await vscode.window.showInformationMessage(
           successMessage(res.data),

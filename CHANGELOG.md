@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.12.3] - 2026-11-03
+
+### Marketplace Polish & CI Hardening
+- **Gallery Banner**: Added dark-themed Marketplace gallery banner (#0D1117).
+- **Activation Events Cleanup**: Reduced activation events to only `onStartupFinished`, removing redundant `onCommand:` entries.
+- **Release Workflow Typecheck**: Added `npm run typecheck` step to the release workflow before tests.
+- **Test Safety**: Stubbed global and local git config methods in robustness tests to prevent host `~/.gitconfig` mutation.
+
+---
+
 ## [0.12.2] - 2026-11-02
 
 ### Major Code Clean & Refactoring

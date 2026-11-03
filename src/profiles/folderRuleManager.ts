@@ -262,6 +262,9 @@ export class FolderRuleManager {
    * Format full includeIf condition string (gitdir:... or hasconfig:remote.*.url:...)
    */
   public formatIncludeIfCondition(rule: string): string {
+    if (!rule || typeof rule !== 'string' || !Validation.isValidFolderRule(rule)) {
+      throw new Error(`Invalid folder rule pattern: "${rule}"`);
+    }
     const trimmed = rule.trim();
     if (trimmed.startsWith('hasconfig:')) {
       return trimmed;
@@ -283,9 +286,17 @@ export class FolderRuleManager {
       const configPath = this.getProfileConfigPath(profile).replace(/\\/g, '/');
 
       for (const rule of profile.folderRules) {
-        if (!rule.trim()) continue;
-        const condition = this.formatIncludeIfCondition(rule);
-        rulesToEmit.push({ condition, configPath });
+        if (!rule || typeof rule !== 'string' || !rule.trim()) continue;
+        if (!Validation.isValidFolderRule(rule)) {
+          logger.warn(`Skipping invalid folder rule: ${rule}`);
+          continue;
+        }
+        try {
+          const condition = this.formatIncludeIfCondition(rule);
+          rulesToEmit.push({ condition, configPath });
+        } catch {
+          continue;
+        }
       }
     }
 
