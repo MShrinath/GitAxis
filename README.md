@@ -1,14 +1,13 @@
 <p align="center">
-  <img alt="GitAxis" src="media/icon.png" width="96" height="96" />
+  <img alt="GitAxis — Multi-Profile Git & GitHub Manager for VS Code" src="media/marketplace-banner.png" width="100%" />
 </p>
 
 # GitAxis — Multi-Profile Git & GitHub Manager for VS Code
 
-[![Visual Studio Marketplace](https://img.shields.io/visual-studio-marketplace/v/mshrinath.gitaxis?logo=visual-studio-code&label=VS%20Code%20Marketplace&color=blue)](https://marketplace.visualstudio.com/items?itemName=mshrinath.gitaxis)
-[![Visual Studio Marketplace Installs](https://img.shields.io/visual-studio-marketplace/i/mshrinath.gitaxis)](https://marketplace.visualstudio.com/items?itemName=mshrinath.gitaxis)
-[![GitHub Release](https://img.shields.io/github/v/release/MShrinath/GitAxis?logo=github&color=blue)](https://github.com/MShrinath/GitAxis/releases)
-[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
-[![Build & Tests](https://img.shields.io/badge/tests-113%20passing-brightgreen.svg)](https://github.com/MShrinath/GitAxis)
+[![Install in VS Code](https://img.shields.io/badge/VS_Code-Install_GitAxis-007ACC?style=flat-square&logo=visualstudiocode&logoColor=white)](vscode:extension/mshrinath.gitaxis)
+[![GitHub Release](https://img.shields.io/github/v/release/MShrinath/GitAxis?style=flat-square&logo=github&logoColor=white&color=0969da)](https://github.com/MShrinath/GitAxis/releases)
+[![License: MIT](https://img.shields.io/badge/License-MIT-2ea44f?style=flat-square)](https://opensource.org/licenses/MIT)
+[![CI](https://github.com/MShrinath/GitAxis/actions/workflows/ci.yml/badge.svg)](https://github.com/MShrinath/GitAxis/actions/workflows/ci.yml)
 
 **GitAxis** is a dedicated multi-account control center for Visual Studio Code and VS Code Insiders. It gives you a clean, unified dashboard to organize, switch, and automate multiple Git and GitHub profiles (Work, Personal, Open Source, Client, Freelance) without terminal gymnastics or configuration drift.
 
@@ -17,11 +16,11 @@
 ## Demo
 
 <p align="center">
-  <video src="media/demo.mp4" poster="media/demo-poster.jpg" controls="controls" muted="muted" width="100%">
-    <a href="https://github.com/MShrinath/GitAxis/raw/main/media/demo.mp4">
-      <img src="media/demo-poster.jpg" alt="GitAxis Video Demo" width="100%" />
-    </a>
-  </video>
+  <img src="media/demo.gif" alt="GitAxis Video Demo" width="100%" />
+</p>
+
+<p align="center">
+  <em><a href="https://github.com/MShrinath/GitAxis/raw/main/media/demo.mp4">Watch or Download Full Video with Audio (MP4)</a></em>
 </p>
 
 ---
