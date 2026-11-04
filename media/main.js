@@ -52,59 +52,6 @@
     }
   }
 
-  function saveCurrentFormToState() {
-    try {
-      const currentState = vscode.getState() || {};
-      const scopeEl = document.querySelector('input[name="form-scope"]:checked');
-      const formEl = document.getElementById('profile-form-section');
-      const isVisible = formEl && !formEl.classList.contains('hidden') && formEl.style.display !== 'none';
-      const formState = {
-        visible: isVisible,
-        id: document.getElementById('form-profile-id')?.value || '',
-        name: document.getElementById('form-name')?.value || '',
-        gitName: document.getElementById('form-git-name')?.value || '',
-        gitEmail: document.getElementById('form-git-email')?.value || '',
-        githubUsername: document.getElementById('form-gh-user')?.value || '',
-        host: document.getElementById('form-host')?.value || 'github.com',
-        scope: scopeEl ? scopeEl.value : 'local',
-        title: document.getElementById('form-title')?.innerText || 'CREATE / EDIT PROFILE',
-        submitBtnText: document.getElementById('form-submit-btn')?.innerText || 'Save Profile',
-      };
-      vscode.setState({ ...currentState, form: formState });
-    } catch (e) {
-      console.error('Failed to save form state:', e);
-    }
-  }
-
-  function restoreFormFromState() {
-    try {
-      const state = vscode.getState();
-      if (!state || !state.form) return;
-      const f = state.form;
-      if (f.visible && (f.name || f.gitName || f.gitEmail || f.githubUsername || f.id)) {
-        showProfileForm();
-        if (document.getElementById('form-profile-id')) document.getElementById('form-profile-id').value = f.id || '';
-        if (document.getElementById('form-name')) document.getElementById('form-name').value = f.name || '';
-        if (document.getElementById('form-git-name')) document.getElementById('form-git-name').value = f.gitName || '';
-        if (document.getElementById('form-git-email')) document.getElementById('form-git-email').value = f.gitEmail || '';
-        if (document.getElementById('form-gh-user')) document.getElementById('form-gh-user').value = f.githubUsername || '';
-        if (document.getElementById('form-host')) document.getElementById('form-host').value = f.host || 'github.com';
-        if (f.scope) {
-          const radio = document.querySelector('input[name="form-scope"][value="' + f.scope + '"]');
-          if (radio) radio.checked = true;
-        }
-        if (f.title && document.getElementById('form-title')) {
-          document.getElementById('form-title').innerText = f.title;
-        }
-        if (f.submitBtnText && document.getElementById('form-submit-btn')) {
-          document.getElementById('form-submit-btn').innerText = f.submitBtnText;
-        }
-      }
-    } catch (e) {
-      console.error('Failed to restore form state:', e);
-    }
-  }
-
   function saveProfileForm() {
     hideFormError();
     const id = (document.getElementById('form-profile-id')?.value || '').trim();
@@ -136,7 +83,6 @@
       submitBtn.innerText = 'Saving...';
     }
 
-    saveCurrentFormToState();
 
     if (id) {
       vscode.postMessage({
@@ -177,8 +123,6 @@
       submitBtn.disabled = false;
       submitBtn.innerText = 'Save Profile';
     }
-    const currentState = vscode.getState() || {};
-    vscode.setState({ ...currentState, form: null });
   }
 
   function editProfile(id) {
@@ -213,7 +157,6 @@
     if (document.getElementById('form-submit-btn')) {
       document.getElementById('form-submit-btn').innerText = 'Update Profile';
     }
-    saveCurrentFormToState();
     const formEl = document.getElementById('profile-form-section');
     if (formEl) formEl.scrollIntoView({ behavior: 'smooth' });
   }
@@ -239,7 +182,6 @@
     if (document.getElementById('form-submit-btn')) {
       document.getElementById('form-submit-btn').innerText = 'Save Profile';
     }
-    saveCurrentFormToState();
     const formEl = document.getElementById('profile-form-section');
     if (formEl) formEl.scrollIntoView({ behavior: 'smooth' });
   }
@@ -362,18 +304,6 @@
     }
   });
 
-  // Attach input listeners for persistent caching
-  ['form-name', 'form-git-name', 'form-git-email', 'form-gh-user', 'form-host', 'form-pat'].forEach(function (id) {
-    const el = document.getElementById(id);
-    if (el) {
-      el.addEventListener('input', saveCurrentFormToState);
-    }
-  });
-
-  document.querySelectorAll('input[name="form-scope"]').forEach(function (el) {
-    el.addEventListener('change', saveCurrentFormToState);
-  });
-
   // Backend response listeners
   window.addEventListener('message', function (event) {
     const msg = event.data;
@@ -463,6 +393,4 @@
     }
   });
 
-  // Restore on initial render
-  restoreFormFromState();
 })();

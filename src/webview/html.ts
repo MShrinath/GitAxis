@@ -339,7 +339,7 @@ export class HtmlBuilder {
           <input type="password" id="form-pat" class="input-text" placeholder="ghp_xxxxxxxxxxxx" autocomplete="off" />
           <button type="button" id="btn-toggle-pat" class="btn btn-secondary btn-sm" data-action="togglePat">Show</button>
         </div>
-        <div class="hint-text pat-hint">Stored securely in VS Code SecretStorage. Inputs are persistent across tab switches.</div>
+        <div class="hint-text pat-hint">Stored securely in VS Code SecretStorage.</div>
       </div>
 
       <div class="form-group">

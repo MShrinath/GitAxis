@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.13.0] - 2026-11-04
+
+### Security & Webview Polish
+- **OSV Security Updates**: Updated `esbuild` to `^0.25.0` (resolving GHSA-67mh-4wv8-2f99) and patched `serialize-javascript` to `^7.1.3` (resolving GHSA-5c6j-r48x-rmvq, GHSA-qj8w-gfj5-8c6v, and GHSA-m5mm-p8h7-m29v).
+- **Webview Form State Cleanup**: Removed persistent form caching across tab switches for cleaner form reset and security.
+- **Documentation & Metadata**: Aligned GPG/SSH documentation truthfully, added FAQ and comparison sections, and added `SECURITY.md` and `CONTRIBUTING.md`.
+
+---
+
 ## [0.12.3] - 2026-11-03
 
 ### Marketplace Polish & CI Hardening
