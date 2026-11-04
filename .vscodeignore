@@ -17,3 +17,5 @@ DATA-CONTRACTS.md
 .gemini/**
 node_modules/**
 media/demo.mp4
+media/demo-poster.jpg
+media/social-preview.png

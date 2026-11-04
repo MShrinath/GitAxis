@@ -4,11 +4,20 @@
   "description": "Multi-profile Git and GitHub control center for VS Code",
   "version": "0.12.3",
   "license": "MIT",
+  "pricing": "Free",
+  "badges": [
+    {
+      "url": "https://github.com/MShrinath/GitAxis/actions/workflows/ci.yml/badge.svg",
+      "href": "https://github.com/MShrinath/GitAxis/actions/workflows/ci.yml",
+      "description": "CI Status"
+    }
+  ],
   "publisher": "mshrinath",
   "icon": "media/icon.png",
   "capabilities": {
     "untrustedWorkspaces": {
-      "supported": false
+      "supported": false,
+      "description": "GitAxis executes Git commands and alters credentials, which requires a trusted workspace."
     }
   },
   "repository": {
@@ -32,7 +41,12 @@
     "profile",
     "identity",
     "account-manager",
-    "credentials"
+    "credentials",
+    "profile-switcher",
+    "multi-account",
+    "ssh",
+    "gpg",
+    "gitconfig"
   ],
   "main": "./dist/extension.js",
   "activationEvents": [
