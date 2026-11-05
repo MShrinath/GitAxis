@@ -22,8 +22,6 @@ const ALLOWED_COMMANDS = new Set([
   'importAllDiscoveredAccounts',
   'openInBrowser',
   'openGitHubRepo',
-  'linkToRepo',
-  'unlinkRepo',
   'useRecommended',
   'verifyProfile',
   'dismissDiscovered',
@@ -273,43 +271,6 @@ export class SidebarViewProvider implements vscode.WebviewViewProvider {
 
           case 'openGitHubRepo': {
             await vscode.commands.executeCommand('gitaxis.openGitHubRepo');
-            break;
-          }
-
-          case 'linkToRepo': {
-            const workspaceFolder = getWorkspaceRepoPath();
-            if (!workspaceFolder) {
-              vscode.window.showWarningMessage('No repository workspace open to link.');
-              break;
-            }
-            if (typeof message.profileId !== 'string' || message.profileId.length > 128) {
-              break;
-            }
-            const profile = await this.profileManager.getProfile(message.profileId);
-            if (!profile) {
-              vscode.window.showWarningMessage(`Cannot link: profile "${message.profileId}" does not exist.`);
-              break;
-            }
-            const repo = await this.repoDiscovery.detectRepository(workspaceFolder);
-            const targetPath = repo?.path || Platform.normalizePath(workspaceFolder);
-            await this.profileManager.associateRepository(targetPath, message.profileId);
-            vscode.window.showInformationMessage(`Linked repository to profile "${profile.name}".`);
-            this.onProfileChanged?.();
-            await this.refresh();
-            break;
-          }
-
-
-          case 'unlinkRepo': {
-            const workspaceFolder = getWorkspaceRepoPath();
-            if (workspaceFolder) {
-              const repo = await this.repoDiscovery.detectRepository(workspaceFolder);
-              const targetPath = repo?.path || Platform.normalizePath(workspaceFolder);
-              await this.profileManager.disassociateRepository(targetPath);
-              vscode.window.showInformationMessage('Removed profile link for current repository.');
-              this.onProfileChanged?.();
-              await this.refresh();
-            }
             break;
           }
 

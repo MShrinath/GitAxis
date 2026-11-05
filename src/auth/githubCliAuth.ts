@@ -12,7 +12,7 @@ export class GitHubCliAuth {
 
   public async isAvailable(): Promise<boolean> {
     try {
-      await execFileAsync('gh', ['--version'], { timeout: 3000 });
+      await execFileAsync('gh', ['--version'], { timeout: 3000, windowsHide: true });
       return true;
     } catch {
       return false;
@@ -34,7 +34,7 @@ export class GitHubCliAuth {
       if (username) {
         args.push('--user', username);
       }
-      const { stdout } = await execFileAsync('gh', args, { timeout: 5000 });
+      const { stdout } = await execFileAsync('gh', args, { timeout: 5000, windowsHide: true });
       const token = stdout.trim();
       if (token.length > 0) {
         this.tokenCache.set(cacheKey, { token, expiresAt: Date.now() + 15000 });
@@ -48,7 +48,7 @@ export class GitHubCliAuth {
 
   public async getStatus(): Promise<{ loggedIn: boolean; rawOutput: string }> {
     try {
-      const { stdout, stderr } = await execFileAsync('gh', ['auth', 'status'], { timeout: 5000 });
+      const { stdout, stderr } = await execFileAsync('gh', ['auth', 'status'], { timeout: 5000, windowsHide: true });
       const output = `${stdout}\n${stderr}`;
       return {
         loggedIn: output.includes('Logged in to'),

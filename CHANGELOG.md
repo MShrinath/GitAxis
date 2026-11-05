@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.13.1] - 2026-11-05
+
+### Fixed & Hardened (Ponytail Review)
+- **Fine-Grained PAT Authentication**: Switched GitHub authentication header to `Bearer <token>` so modern fine-grained PATs (`github_pat_*`) authenticate without 401 errors alongside classic tokens.
+- **Case-Insensitive & Trailing-Slash Repo Associations**: Normalized repository keys on Windows and macOS to lowercase and stripped trailing slashes, preventing association lookup misses across different path casings.
+- **Async Include File Writing**: Replaced blocking synchronous execution in folder rule include generation with async child process execution, eliminating extension host UI freezes.
+- **Standalone File Repository Detection**: Added directory fallback when editing standalone files outside workspace folders so active Git identities resolve correctly.
+- **Regex Metacharacter Escaping**: Properly escaped special characters (`.`, `?`, `+`, `$`, etc.) in organization wildcard patterns to prevent unintended matching.
+- **Windows Process Flickering**: Added `windowsHide: true` to all child process spawns to eliminate background console window flashes.
+- **Clean Windows Atomic Writes**: Added unique temp file generation and clean overwrite handling in `safeWriteGitConfig`.
+- **Pruned Dead Bind/Unbind Handlers**: Cleaned out obsolete `bindRepo`/`unbindRepo` command registrations and `linkToRepo`/`unlinkRepo` webview messages.
+
+---
+
 ## [0.13.0] - 2026-11-04
 
 ### Security & Webview Polish

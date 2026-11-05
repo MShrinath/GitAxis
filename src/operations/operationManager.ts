@@ -92,7 +92,8 @@ export class OperationManager implements IOperationManager {
       const lowerOrg = org.trim().toLowerCase();
       if (lowerOrg === lowerRemote) return true;
       if (lowerOrg.includes('*')) {
-        const regex = new RegExp('^' + lowerOrg.replace(/\*/g, '.*') + '$');
+        const regexPattern = '^' + lowerOrg.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*') + '$';
+        const regex = new RegExp(regexPattern);
         if (regex.test(lowerRemote)) return true;
       }
     }

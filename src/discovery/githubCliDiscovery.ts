@@ -7,7 +7,7 @@ const execFileAsync = promisify(execFile);
 export class GitHubCliDiscovery {
   public async detect(): Promise<GitHubCliDiscoveryInfo> {
     try {
-      const { stdout: versionOut } = await execFileAsync('gh', ['--version'], { timeout: 3000 });
+      const { stdout: versionOut } = await execFileAsync('gh', ['--version'], { timeout: 3000, windowsHide: true });
       const version = versionOut.split('\n')[0]?.trim();
 
       const accounts = await this.detectAccounts();
@@ -29,7 +29,7 @@ export class GitHubCliDiscovery {
     const accounts: GitHubCliAccountInfo[] = [];
 
     try {
-      const { stdout, stderr } = await execFileAsync('gh', ['auth', 'status'], { timeout: 5000 });
+      const { stdout, stderr } = await execFileAsync('gh', ['auth', 'status'], { timeout: 5000, windowsHide: true });
       const output = `${stdout}\n${stderr}`;
       const lines = output.split('\n');
 

@@ -85,7 +85,7 @@ export class AccountVerifier {
   private fetchGitHubUser(host: string, token: string): Promise<Response> {
     return fetch(this.getApiUrl(host), {
       headers: {
-        Authorization: `token ${token}`,
+        Authorization: `Bearer ${token}`,
         'User-Agent': 'GitAxis-VSCode-Extension',
         Accept: 'application/vnd.github.v3+json',
       },
@@ -231,7 +231,7 @@ export class AccountVerifier {
     ];
 
     try {
-      const { stdout, stderr } = await execFileAsync('ssh', args, { timeout: 10000 });
+      const { stdout, stderr } = await execFileAsync('ssh', args, { timeout: 10000, windowsHide: true });
       const output = `${stdout}\n${stderr}`;
       return this.parseSshOutput(output, expectedUsername);
     } catch (err: unknown) {
@@ -312,7 +312,7 @@ export class AccountVerifier {
           const apiUrl = host === 'github.com' ? 'https://api.github.com/user' : `https://${host}/api/v3/user`;
           const res = await fetch(apiUrl, {
             headers: {
-              Authorization: `token ${token}`,
+              Authorization: `Bearer ${token}`,
               'User-Agent': 'GitAxis-VSCode-Extension',
               Accept: 'application/vnd.github.v3+json',
             },

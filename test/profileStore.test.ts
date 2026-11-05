@@ -98,6 +98,31 @@ describe('PersistentProfileStore', () => {
     assert.strictEqual(afterDeleteAssoc, undefined);
   });
 
+  it('should handle repository associations case-insensitively on Windows and macOS', async () => {
+    const p1 = await store.create({
+      name: 'client-b',
+      git: { name: 'Client B', email: 'client@b.com' },
+      authentication: { type: 'none' },
+    });
+
+    const repoPath = 'C:/Projects/ClientB-Repo';
+    await store.setAssociation(repoPath, p1.id);
+
+    // Exact match
+    assert.strictEqual(await store.getAssociation('C:/Projects/ClientB-Repo'), p1.id);
+    // Lowercase match
+    assert.strictEqual(await store.getAssociation('c:/projects/clientb-repo'), p1.id);
+    // Mixed case match
+    assert.strictEqual(await store.getAssociation('C:/PROJECTS/clientb-repo'), p1.id);
+    // Trailing slash and backslash matches
+    assert.strictEqual(await store.getAssociation('C:/Projects/ClientB-Repo/'), p1.id);
+    assert.strictEqual(await store.getAssociation('C:\\projects\\clientb-repo\\'), p1.id);
+
+    // Remove using different casing and trailing slash
+    await store.removeAssociation('c:/projects/clientb-repo/');
+    assert.strictEqual(await store.getAssociation(repoPath), undefined);
+  });
+
   it('should support renaming a profile and reject colliding names', async () => {
     const alpha = await store.create({
       name: 'alpha',

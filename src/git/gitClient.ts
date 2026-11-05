@@ -49,6 +49,7 @@ export class GitClient {
         cwd: options.cwd,
         timeout: options.timeout ?? 30000,
         signal: options.signal,
+        windowsHide: true,
         env: {
           ...process.env,
           ...(options.env || {}),
@@ -92,6 +93,7 @@ export class GitClient {
           cwd: options.cwd,
           timeout: options.timeout ?? 10000,
           signal: options.signal,
+          windowsHide: true,
           env: {
             ...process.env,
             ...(options.env || {}),

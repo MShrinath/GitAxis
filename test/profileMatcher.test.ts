@@ -80,4 +80,44 @@ describe('ProfileMatcher', () => {
     assert.strictEqual(match.confidence, 'none');
     assert.deepStrictEqual(match.reasons, ['no-match']);
   });
+
+  it('should escape regex special characters in org wildcards', async () => {
+    const orgProfile = await store.create({
+      name: 'dot-org',
+      git: { name: 'Dot Org User', email: 'dot@my.org.com' },
+      github: { host: 'github.com', username: 'dot-org-user', orgs: ['my.org*'] },
+      authentication: { type: 'none' },
+    });
+
+    // my.org-team should match
+    const match1 = await matcher.match({
+      remotes: [{ name: 'origin', host: 'github.com', owner: 'my.org-team', repository: 'repo' }],
+    });
+    assert.strictEqual(match1.recommendedProfileId, orgProfile.id);
+
+    // myxorg should NOT match (unintended match if dot was unescaped)
+    const match2 = await matcher.match({
+      remotes: [{ name: 'origin', host: 'github.com', owner: 'myxorg', repository: 'repo' }],
+    });
+    assert.notStrictEqual(match2.recommendedProfileId, orgProfile.id);
+
+    const qmarkProfile = await store.create({
+      name: 'qmark-org',
+      git: { name: 'QMark User', email: 'qmark@test.com' },
+      github: { host: 'github.com', username: 'qmark-user', orgs: ['org?team*'] },
+      authentication: { type: 'none' },
+    });
+
+    // org?team-1 should match
+    const match3 = await matcher.match({
+      remotes: [{ name: 'origin', host: 'github.com', owner: 'org?team-1', repository: 'repo' }],
+    });
+    assert.strictEqual(match3.recommendedProfileId, qmarkProfile.id);
+
+    // orteam-1 should NOT match (unintended match if ? was unescaped quantifier)
+    const match4 = await matcher.match({
+      remotes: [{ name: 'origin', host: 'github.com', owner: 'orteam-1', repository: 'repo' }],
+    });
+    assert.notStrictEqual(match4.recommendedProfileId, qmarkProfile.id);
+  });
 });

@@ -11,6 +11,7 @@ export function getWorkspaceRepoPath(): string | undefined {
   if (activeUri && activeUri.scheme === 'file') {
     const folder = vscode.workspace.getWorkspaceFolder(activeUri);
     if (folder) return folder.uri.fsPath;
+    return path.dirname(activeUri.fsPath);
   }
   return vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
 }
@@ -45,6 +46,10 @@ export async function getActiveWorkspaceRepoPath(
           return await gitClient.getRoot(fileDir);
         }
       } catch {}
+    }
+    const workspaceFolders = vscode.workspace.workspaceFolders;
+    if (!gitClient || !workspaceFolders || workspaceFolders.length === 0) {
+      return path.dirname(activeUri.fsPath);
     }
   }
 

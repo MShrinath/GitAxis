@@ -248,24 +248,55 @@ export class PersistentProfileStore implements ProfileStore {
     return this.get(activeId);
   }
 
+  private normalizeRepoKey(repoPath: string): string {
+    let key = Platform.normalizePath(repoPath);
+    if (key.length > 1 && !/^[a-zA-Z]:\/$/i.test(key)) {
+      key = key.replace(/\/+$/, '');
+    }
+    return Platform.isWindows() || Platform.isMacOS() || /^[a-zA-Z]:\//i.test(key)
+      ? key.toLowerCase()
+      : key;
+  }
+
   // Repository Associations
   public async getAssociation(repoPath: string): Promise<ProfileId | undefined> {
-    const key = Platform.normalizePath(repoPath);
+    const key = this.normalizeRepoKey(repoPath);
     const associations = await this.getAllAssociations();
-    return associations[key];
+    if (associations[key]) {
+      return associations[key];
+    }
+    if (Platform.isWindows() || Platform.isMacOS() || /^[a-zA-Z]:\//i.test(key)) {
+      const match = Object.entries(associations).find(([k]) => this.normalizeRepoKey(k) === key);
+      return match ? match[1] : undefined;
+    }
+    return undefined;
   }
 
   public async setAssociation(repoPath: string, profileId: ProfileId): Promise<void> {
-    const key = Platform.normalizePath(repoPath);
+    const key = this.normalizeRepoKey(repoPath);
     const associations = await this.getAllAssociations();
+    if (Platform.isWindows() || Platform.isMacOS() || /^[a-zA-Z]:\//i.test(key)) {
+      for (const k of Object.keys(associations)) {
+        if (this.normalizeRepoKey(k) === key && k !== key) {
+          delete associations[k];
+        }
+      }
+    }
     associations[key] = profileId;
     await this.memento.update(PersistentProfileStore.ASSOCIATIONS_KEY, associations);
   }
 
   public async removeAssociation(repoPath: string): Promise<void> {
-    const key = Platform.normalizePath(repoPath);
+    const key = this.normalizeRepoKey(repoPath);
     const associations = await this.getAllAssociations();
     delete associations[key];
+    if (Platform.isWindows() || Platform.isMacOS() || /^[a-zA-Z]:\//i.test(key)) {
+      for (const k of Object.keys(associations)) {
+        if (this.normalizeRepoKey(k) === key) {
+          delete associations[k];
+        }
+      }
+    }
     await this.memento.update(PersistentProfileStore.ASSOCIATIONS_KEY, associations);
   }
 

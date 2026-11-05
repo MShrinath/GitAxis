@@ -83,7 +83,8 @@ export class ProfileMatcher {
                   break;
                 }
                 if (lowerOrg.includes('*')) {
-                  const regex = new RegExp('^' + lowerOrg.replace(/\*/g, '.*') + '$');
+                  const regexPattern = '^' + lowerOrg.replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*') + '$';
+                  const regex = new RegExp(regexPattern);
                   if (regex.test(lowerRemote)) {
                     matchedOwner = true;
                     break;

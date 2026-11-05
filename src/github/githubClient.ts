@@ -41,7 +41,7 @@ export class GitHubClient {
     };
 
     if (this.auth?.credential) {
-      headers['Authorization'] = `token ${this.auth.credential}`;
+      headers['Authorization'] = `Bearer ${this.auth.credential}`;
     }
 
     // Try direct fetch first if token is available
@@ -120,7 +120,7 @@ export class GitHubClient {
         env.GH_HOST = this.host;
       }
 
-      const child = execFile('gh', ghArgs, { timeout: 15000, env }, () => {});
+      const child = execFile('gh', ghArgs, { timeout: 15000, windowsHide: true, env }, () => {});
       if (body && child.stdin) {
         child.stdin.write(JSON.stringify(body));
         child.stdin.end();

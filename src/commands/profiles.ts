@@ -105,12 +105,6 @@ export function registerProfileCommands(
         if (selected.action === 'effective-identity') {
           await vscode.commands.executeCommand('gitaxis.showEffectiveIdentity');
           return;
-        } else if (selected.action === 'bind') {
-          await vscode.commands.executeCommand('gitaxis.bindRepo');
-          return;
-        } else if (selected.action === 'unbind') {
-          await vscode.commands.executeCommand('gitaxis.unbindRepo');
-          return;
         } else if (selected.action === 'folder-rules') {
           await vscode.commands.executeCommand('gitaxis.configureFolderRules');
           return;
@@ -437,67 +431,8 @@ export function registerProfileCommands(
     })
   );
 
-  // 4. Bind Current Repo to Profile
-  context.subscriptions.push(
-    vscode.commands.registerCommand('gitaxis.bindRepo', async () => {
-      const repoRoot = await getCurrentRepoRoot();
-      if (!repoRoot) {
-        vscode.window.showWarningMessage('No repository workspace open.');
-        return;
-      }
 
-      const profiles = await profileManager.getProfiles();
-      if (profiles.length === 0) {
-        vscode.window.showWarningMessage('No profiles available.');
-        return;
-      }
-
-      const currentBoundId = await profileManager.getAssociation(repoRoot);
-      const items = profiles.map(p => ({
-        label: `${p.id === currentBoundId ? '$(check) ' : ''}${p.name}`,
-        description: `@${p.github?.username || 'none'} <${p.git.email}>`,
-        detail: `Scope: ${p.git.scope} · Auth: ${p.authentication.type}`,
-        profileId: p.id,
-      }));
-
-      const selected = await vscode.window.showQuickPick(items, {
-        placeHolder: 'Select profile for this repository',
-      });
-      if (!selected) return;
-
-      await profileManager.switchProfile(selected.profileId, repoRoot);
-      await profileManager.associateRepository(repoRoot, selected.profileId);
-      const profile = await profileManager.getProfile(selected.profileId);
-      vscode.window.showInformationMessage(`Repository profile set to "${profile?.name}".`);
-      onProfileChanged?.();
-    })
-  );
-
-  // 5. Clear Repository Profile Override
-  context.subscriptions.push(
-    vscode.commands.registerCommand('gitaxis.unbindRepo', async () => {
-      const repoRoot = await getCurrentRepoRoot();
-      if (!repoRoot) {
-        vscode.window.showWarningMessage('No repository workspace open.');
-        return;
-      }
-
-      const currentBoundId = await profileManager.getAssociation(repoRoot);
-      if (!currentBoundId) {
-        vscode.window.showInformationMessage('Current repository has no profile association override.');
-        return;
-      }
-
-      const profile = await profileManager.getProfile(currentBoundId);
-      await profileManager.disassociateRepository(repoRoot);
-      vscode.window.showInformationMessage(
-        `Cleared profile override for repository ("${profile?.name || currentBoundId}"). It will now use auto-matching or fallback.`
-      );
-      onProfileChanged?.();
-    })
-  );
-
-  // 6. Verify Account Authentication
+  // 5. Verify Account Authentication
   context.subscriptions.push(
     vscode.commands.registerCommand('gitaxis.verifyAccount', async (targetProfileId?: string) => {
       if (!accountVerifier) {
@@ -560,7 +495,7 @@ export function registerProfileCommands(
     })
   );
 
-  // 7. Show Effective Identity (Section 9 & Section 14)
+  // 6. Show Effective Identity (Section 9 & Section 14)
   context.subscriptions.push(
     vscode.commands.registerCommand('gitaxis.showEffectiveIdentity', async () => {
       const repoRoot = await getCurrentRepoRoot();
@@ -645,7 +580,7 @@ export function registerProfileCommands(
     })
   );
 
-  // 8. Configure Folder Rules (Section 7)
+  // 7. Configure Folder Rules (Section 7)
   context.subscriptions.push(
     vscode.commands.registerCommand('gitaxis.configureFolderRules', async () => {
       const folderRuleManager = profileManager.getFolderRuleManager();
@@ -780,7 +715,7 @@ export function registerProfileCommands(
     })
   );
 
-  // 9. Remove All GitAxis Config (Section 7)
+  // 8. Remove All GitAxis Config (Section 7)
   context.subscriptions.push(
     vscode.commands.registerCommand('gitaxis.removeAllConfig', async () => {
       const folderRuleManager = profileManager.getFolderRuleManager();

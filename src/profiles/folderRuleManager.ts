@@ -1,11 +1,14 @@
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { execFileSync } from 'child_process';
+import { execFile } from 'child_process';
+import { promisify } from 'util';
 import { GitProfile, GitRemote } from '../contracts';
 import { Platform } from '../utils/platform';
 import { logger } from '../utils/logger';
 import { Validation } from '../utils/validation';
+
+const execFileAsync = promisify(execFile);
 
 export const GITAXIS_CONFIG_START = '# GitAxis Start - Managed by GitAxis VS Code Extension';
 export const GITAXIS_CONFIG_END = '# GitAxis End';
@@ -85,7 +88,7 @@ export class FolderRuleManager {
       if (!remotes || remotes.length === 0) return false;
       const urlPattern = cleanRule.replace(/^hasconfig:remote\.\*\.url:/i, '').trim();
       const regexStr = '^' + urlPattern
-        .replace(/[.+^${}()|[\]\\]/g, '\\$&')
+        .replace(/[.+?^${}()|[\]\\]/g, '\\$&')
         .replace(/\*\*/g, '.*')
         .replace(/\*/g, '[^/]*') + '$';
       const regex = new RegExp(regexStr, 'i');
@@ -216,23 +219,23 @@ export class FolderRuleManager {
         await fs.promises.unlink(filePath);
       }
 
-      const runGitConfig = (key: string, val: string) => {
-        execFileSync('git', ['config', '--file', filePath, key, val], { timeout: 5000 });
+      const runGitConfig = async (key: string, val: string) => {
+        await execFileAsync('git', ['config', '--file', filePath, key, val], { timeout: 5000, windowsHide: true });
       };
 
-      runGitConfig('user.name', profile.git.name);
-      runGitConfig('user.email', profile.git.email);
+      await runGitConfig('user.name', profile.git.name);
+      await runGitConfig('user.email', profile.git.email);
 
       const rawSshKeyPath = (profile.authentication as { sshKeyPath?: string })?.sshKeyPath?.trim();
       if (profile.authentication.type === 'ssh' && rawSshKeyPath) {
         const sshCommand = Platform.resolveSshCommand(rawSshKeyPath, this.homedir, false);
-        runGitConfig('core.sshCommand', sshCommand);
+        await runGitConfig('core.sshCommand', sshCommand);
       }
 
       const host = Platform.normalizeGitHubHost(profile.github?.host);
       const ghUsername = profile.github?.username?.trim();
       if (ghUsername && Validation.isValidHost(host)) {
-        runGitConfig(`credential.https://${host}.username`, ghUsername);
+        await runGitConfig(`credential.https://${host}.username`, ghUsername);
       }
     } catch (err) {
       logger.warn(`Fallback to string generation for ${filePath}: ${String(err)}`);
@@ -460,10 +463,15 @@ export class FolderRuleManager {
         logger.warn(`Could not backup gitconfig to ${targetPath}.bak: ${String(backupErr)}`);
       }
     }
-    const tempPath = `${targetPath}.tmp.${Date.now()}`;
+    const tempPath = `${targetPath}.tmp.${Date.now()}.${Math.random().toString(36).slice(2, 8)}`;
     await fs.promises.writeFile(tempPath, content, 'utf8');
     try {
-      await fs.promises.rename(tempPath, targetPath);
+      if (Platform.isWindows() && fs.existsSync(targetPath)) {
+        await fs.promises.copyFile(tempPath, targetPath);
+        await fs.promises.unlink(tempPath);
+      } else {
+        await fs.promises.rename(tempPath, targetPath);
+      }
     } catch {
       await fs.promises.writeFile(targetPath, content, 'utf8');
       try { await fs.promises.unlink(tempPath); } catch {}
