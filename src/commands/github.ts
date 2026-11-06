@@ -38,47 +38,25 @@ function createGitHubListOp(
   type: 'github.actions.list' | 'github.release.list',
   origin: ValidatedGitHubRemote
 ): Operation {
-  if (type === 'github.actions.list') {
-    return createOperation({
-      id: crypto.randomUUID(),
-      type: 'github.actions.list',
-      input: {
-        host: origin.host,
-        owner: origin.owner,
-        repository: origin.repository,
-      },
-      target: {
-        kind: 'github-repository',
-        host: origin.host || 'github.com',
-        owner: origin.owner,
-        repository: origin.repository,
-      },
-      safety: 'read-only',
-      confirmation: { required: false },
-      createdAt: new Date().toISOString(),
-      initiatedBy: 'command-palette',
-    });
-  } else {
-    return createOperation({
-      id: crypto.randomUUID(),
-      type: 'github.release.list',
-      input: {
-        host: origin.host,
-        owner: origin.owner,
-        repository: origin.repository,
-      },
-      target: {
-        kind: 'github-repository',
-        host: origin.host || 'github.com',
-        owner: origin.owner,
-        repository: origin.repository,
-      },
-      safety: 'read-only',
-      confirmation: { required: false },
-      createdAt: new Date().toISOString(),
-      initiatedBy: 'command-palette',
-    });
-  }
+  return createOperation({
+    id: crypto.randomUUID(),
+    type,
+    input: {
+      host: origin.host,
+      owner: origin.owner,
+      repository: origin.repository,
+    },
+    target: {
+      kind: 'github-repository',
+      host: origin.host || 'github.com',
+      owner: origin.owner,
+      repository: origin.repository,
+    },
+    safety: 'read-only',
+    confirmation: { required: false },
+    createdAt: new Date().toISOString(),
+    initiatedBy: 'command-palette',
+  });
 }
 
 async function showGitHubResourceList<T>(

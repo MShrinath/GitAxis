@@ -11,7 +11,7 @@ import { logger } from '../utils/logger';
 
 const execFileAsync = promisify(execFile);
 
-export type VerificationStatusState = 'verified' | 'failed' | 'not-verified';
+type VerificationStatusState = 'verified' | 'failed' | 'not-verified';
 
 export interface VerificationResult {
   success: boolean;

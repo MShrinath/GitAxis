@@ -1,5 +1,5 @@
 import { GitClient } from '../git/gitClient';
-import { PersistentProfileStore } from '../profiles/profileStore';
+import { IMemento, PersistentProfileStore } from '../profiles/profileStore';
 import { logger } from '../utils/logger';
 
 let vscodeModule: any;
@@ -7,10 +7,7 @@ try {
   vscodeModule = require('vscode');
 } catch {}
 
-export interface IMigrationMemento {
-  get<T>(key: string, defaultValue?: T): T;
-  update(key: string, value: unknown): Thenable<void> | Promise<void>;
-}
+export type IMigrationMemento = IMemento;
 
 export class ExtraheaderMigration {
   public static readonly MIGRATION_KEY = 'gitaxis.migratedExtraheaderV040';

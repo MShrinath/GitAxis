@@ -6,7 +6,28 @@ import { AuthenticationType, CreateProfileInput, GitIdentityScope } from '../con
 import { Validation } from '../utils/validation';
 import { logger } from '../utils/logger';
 import { AccountVerifier } from '../auth/accountVerifier';
+import { FolderRuleManager } from '../profiles/folderRuleManager';
 import { confirmGlobalGitChange, getWorkspaceRepoPath } from '../utils/workspace';
+
+async function confirmAndApplyFolderRules(
+  folderRuleManager: FolderRuleManager,
+  profileManager: ProfileManager,
+  promptPrefix: string,
+  successMsg: string
+): Promise<void> {
+  const allProfiles = await profileManager.getProfiles();
+  const preview = await folderRuleManager.previewIncludeIfChanges(allProfiles);
+  const confirmBtn = 'Confirm & Apply';
+  const confirm = await vscode.window.showInformationMessage(
+    `${promptPrefix}\n\n${preview.includeIfBlock || '(No active folder rules)'}`,
+    { modal: true },
+    confirmBtn
+  );
+  if (confirm === confirmBtn) {
+    await folderRuleManager.applyIncludeIfRules(allProfiles);
+    vscode.window.showInformationMessage(successMsg);
+  }
+}
 
 export function registerProfileCommands(
   context: vscode.ExtensionContext,
@@ -677,18 +698,12 @@ export function registerProfileCommands(
           'Later'
         );
         if (res === applyNow) {
-          const allProfiles = await profileManager.getProfiles();
-          const preview = await folderRuleManager.previewIncludeIfChanges(allProfiles);
-          const confirmBtn = 'Confirm & Apply';
-          const confirm = await vscode.window.showInformationMessage(
-            `GitAxis will add the following to ~/.gitconfig:\n\n${preview.includeIfBlock}`,
-            { modal: true },
-            confirmBtn
+          await confirmAndApplyFolderRules(
+            folderRuleManager,
+            profileManager,
+            'GitAxis will add the following to ~/.gitconfig:',
+            'Successfully applied folder rules to ~/.gitconfig!'
           );
-          if (confirm === confirmBtn) {
-            await folderRuleManager.applyIncludeIfRules(allProfiles);
-            vscode.window.showInformationMessage('Successfully applied folder rules to ~/.gitconfig!');
-          }
         }
         onProfileChanged?.();
       } else if (chosenAction.action === 'remove' && chosenAction.ruleIndex !== undefined) {
@@ -697,18 +712,12 @@ export function registerProfileCommands(
         vscode.window.showInformationMessage(`Removed folder rule from profile "${profile.name}".`);
         onProfileChanged?.();
       } else if (chosenAction.action === 'apply') {
-        const allProfiles = await profileManager.getProfiles();
-        const preview = await folderRuleManager.previewIncludeIfChanges(allProfiles);
-        const confirmBtn = 'Confirm & Apply';
-        const confirm = await vscode.window.showInformationMessage(
-          `GitAxis will update ~/.gitconfig with includeIf rules:\n\n${preview.includeIfBlock || '(No active folder rules)'}`,
-          { modal: true },
-          confirmBtn
+        await confirmAndApplyFolderRules(
+          folderRuleManager,
+          profileManager,
+          'GitAxis will update ~/.gitconfig with includeIf rules:',
+          'Successfully updated ~/.gitconfig with GitAxis folder rules!'
         );
-        if (confirm === confirmBtn) {
-          await folderRuleManager.applyIncludeIfRules(allProfiles);
-          vscode.window.showInformationMessage('Successfully updated ~/.gitconfig with GitAxis folder rules!');
-        }
       } else if (chosenAction.action === 'remove-all') {
         await vscode.commands.executeCommand('gitaxis.removeAllConfig');
       }

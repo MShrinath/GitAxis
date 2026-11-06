@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.13.2] - 2026-11-06
+
+### Refactored & Optimized
+- **Folder Rule Application Deduplication**: Extracted unified `confirmAndApplyFolderRules` helper in profile commands, eliminating duplicate includeIf preview and confirmation logic.
+- **GitHub List Operation Optimization**: Collapsed duplicate operation object building across `github.actions.list` and `github.release.list` commands.
+- **Contract & Type Clean-up**: Reused core `IMemento` contract for `IMigrationMemento` and cleaned up unexported types in `AccountVerifier`.
+- **Node.js 24 & Packaging Hygiene**: Added `"type": "commonjs"` to package.json and updated test runner to eliminate Node 24 module loader warnings.
+- **VSIX Artifact Protection**: Added `graphify-out/**` to `.vscodeignore` to prevent local analysis caches from bloating release packages.
+
+---
+
 ## [0.13.1] - 2026-11-05
 
 ### Fixed & Hardened (Ponytail Review)

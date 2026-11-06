@@ -2,7 +2,8 @@
   "name": "gitaxis",
   "displayName": "GitAxis - Git & GitHub Profile Manager",
   "description": "Multi-profile Git and GitHub control center for VS Code. Switch work & personal accounts, automate folder routing, and isolate credentials.",
-  "version": "0.13.1",
+  "version": "0.13.2",
+  "type": "commonjs",
   "license": "MIT",
   "pricing": "Free",
   "badges": [
@@ -178,8 +179,8 @@
     "watch": "node esbuild.js --watch",
     "compile": "tsc -p ./",
     "typecheck": "tsc --noEmit",
-    "test": "mocha -r ts-node/register \"test/**/*.test.ts\"",
-    "package": "vsce package --no-dependencies"
+    "test": "mocha -r ts-node/register/transpile-only \"test/**/*.test.ts\"",
+    "package": "npx @vscode/vsce package --no-dependencies"
   },
   "devDependencies": {
     "@types/mocha": "^10.0.6",
