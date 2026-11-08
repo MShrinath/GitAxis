@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.14.0] - 2026-11-08
+
+### Added & Enhanced
+- **Sidebar SSH Key Support**: Added authentication type selector and SSH key path input to the Sidebar Webview Control Center form with dynamic toggling and credential clearing.
+- **Default SSH Agent Key Verification**: Added support in `AccountVerifier.verifySsh` to test default SSH agent/keys when `sshKeyPath` is left blank, avoiding false-negative verification errors.
+
+### Fixed & Hardened (Security Audit)
+- **SSH Command Injection Prevention**: Added strict `Validation.isValidSshKeyPath` validation rejecting unclosed quotes, control characters (`\x00-\x1f\x7f`), and option flags (`ProxyCommand`, `LocalCommand`) before constructing `core.sshCommand`.
+- **Network Fetch Timeouts**: Injected 5-second abort timeouts into `AccountVerifier` and `GitHubClient` fetch calls to prevent background verification freezes on firewalled/unreachable enterprise hosts.
+- **Cross-Platform Case-Insensitive `gitdir/i:`**: Emitted `gitdir/i:` conditions for Windows and macOS in `FolderRuleManager` to ensure includeIf matching regardless of folder casing.
+- **Global Profile Sync in Empty Workspaces**: Ensured active global profile changes update `~/.gitconfig` even when no repository folder is currently open.
+- **Extension Deactivation Hygiene**: Cleaned up active editor debounce and startup check timers upon extension deactivation.
+
+### Cleaned & Optimized
+- **Ghost Commands Pruned**: Removed orphaned V1 commands (`branch`, `commit`, `repository`, `stash`, `sync`, `tag`) and deregistered them from `extension.ts` to reduce bundle size and maintenance overhead.
+- **Test Suite Consolidation**: Streamlined test suite from 17 fragmented files down to 8 clean, domain-focused suites (140 passing tests).
+
+---
+
 ## [0.13.2] - 2026-11-06
 
 ### Refactored & Optimized
