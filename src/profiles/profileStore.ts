@@ -7,6 +7,7 @@ import {
   UpdateProfileInput,
 } from '../contracts';
 import { Platform } from '../utils/platform';
+import { Validation } from '../utils/validation';
 
 export interface IMemento {
   get<T>(key: string, defaultValue?: T): T;
@@ -75,6 +76,11 @@ export class PersistentProfileStore implements ProfileStore {
 
     const now = new Date().toISOString();
     const id = input.id ?? this.generateId();
+
+    const rawSshKey = input.authentication.sshKeyPath?.trim();
+    if (rawSshKey && !Validation.isValidSshKeyPath(rawSshKey)) {
+      throw new Error(`Invalid SSH key path: "${input.authentication.sshKeyPath}"`);
+    }
 
     const newProfile: GitProfile = {
       id,
@@ -145,6 +151,13 @@ export class PersistentProfileStore implements ProfileStore {
       }
     }
 
+    if (input.authentication?.sshKeyPath !== undefined) {
+      const rawSshKey = input.authentication.sshKeyPath.trim();
+      if (rawSshKey && !Validation.isValidSshKeyPath(rawSshKey)) {
+        throw new Error(`Invalid SSH key path: "${input.authentication.sshKeyPath}"`);
+      }
+    }
+
     const updated: GitProfile = {
       ...current,
       name: input.name ? input.name.trim() : current.name,
@@ -171,9 +184,19 @@ export class PersistentProfileStore implements ProfileStore {
         ...current.authentication,
         ...(input.authentication?.type ? { type: input.authentication.type } : {}),
         ...(input.authentication?.source ? { source: input.authentication.source } : {}),
-        ...(input.authentication?.sshKeyPath !== undefined
-          ? { sshKeyPath: input.authentication.sshKeyPath.trim() || undefined }
-          : {}),
+        sshKeyPath:
+          (input.authentication?.type ?? current.authentication.type) === 'ssh'
+            ? (input.authentication?.sshKeyPath !== undefined
+                ? input.authentication.sshKeyPath.trim() || undefined
+                : current.authentication.sshKeyPath)
+            : undefined,
+        secretRef:
+          (input.authentication?.type ?? current.authentication.type) === 'pat'
+            ? current.authentication.secretRef || {
+                provider: 'vscode-secret-storage',
+                key: `gitaxis.profile.${id}.github-token`,
+              }
+            : undefined,
       },
       folderRules:
         input.folderRules !== undefined

@@ -7,6 +7,7 @@ import { SecretStore } from './secretStore';
 import { GitClient } from '../git/gitClient';
 import { GitHubCliAuth } from './githubCliAuth';
 import { Platform } from '../utils/platform';
+import { Validation } from '../utils/validation';
 import { logger } from '../utils/logger';
 
 const execFileAsync = promisify(execFile);
@@ -89,6 +90,7 @@ export class AccountVerifier {
         'User-Agent': 'GitAxis-VSCode-Extension',
         Accept: 'application/vnd.github.v3+json',
       },
+      signal: AbortSignal.timeout(5000),
     });
   }
 
@@ -202,33 +204,34 @@ export class AccountVerifier {
     expectedUsername?: string
   ): Promise<VerificationResult> {
     const rawSshKeyPath = profile.authentication.sshKeyPath?.trim();
-    if (!rawSshKeyPath) {
-      return {
-        success: false,
-        status: 'failed',
-        message: 'No SSH key path configured for this profile.',
-      };
-    }
+    const args: string[] = [];
 
-    let resolvedKeyPath = rawSshKeyPath;
-    if (resolvedKeyPath.startsWith('~')) {
-      resolvedKeyPath = path.join(os.homedir(), resolvedKeyPath.slice(1));
+    if (rawSshKeyPath) {
+      if (!Validation.isValidSshKeyPath(rawSshKeyPath)) {
+        return {
+          success: false,
+          status: 'failed',
+          message: `Invalid SSH key path: "${rawSshKeyPath}". Path contains invalid characters or command flags.`,
+        };
+      }
+
+      let resolvedKeyPath = rawSshKeyPath;
+      if (resolvedKeyPath.startsWith('~')) {
+        resolvedKeyPath = path.join(os.homedir(), resolvedKeyPath.slice(1));
+      }
+      const normalizedKeyPath = Platform.normalizePath(resolvedKeyPath);
+      args.push('-i', normalizedKeyPath, '-o', 'IdentitiesOnly=yes');
     }
-    const normalizedKeyPath = Platform.normalizePath(resolvedKeyPath);
 
     const sshTarget = `git@${host}`;
-    const args = [
-      '-i',
-      normalizedKeyPath,
+    args.push(
       '-o',
       'BatchMode=yes',
       '-o',
-      'IdentitiesOnly=yes',
-      '-o',
       'StrictHostKeyChecking=accept-new',
       '-T',
-      sshTarget,
-    ];
+      sshTarget
+    );
 
     try {
       const { stdout, stderr } = await execFileAsync('ssh', args, { timeout: 10000, windowsHide: true });
@@ -316,6 +319,7 @@ export class AccountVerifier {
               'User-Agent': 'GitAxis-VSCode-Extension',
               Accept: 'application/vnd.github.v3+json',
             },
+            signal: AbortSignal.timeout(5000),
           });
           if (res.ok) {
             const user = (await res.json()) as { login: string };

@@ -9,12 +9,6 @@ import { SystemDiscovery } from './discovery/systemDiscovery';
 import { OperationManager } from './operations/operationManager';
 import { SidebarViewProvider } from './webview/sidebarView';
 import { registerProfileCommands } from './commands/profiles';
-import { registerRepositoryCommands } from './commands/repository';
-import { registerBranchCommands } from './commands/branch';
-import { registerCommitCommands } from './commands/commit';
-import { registerSyncCommands } from './commands/sync';
-import { registerStashCommands } from './commands/stash';
-import { registerTagCommands } from './commands/tag';
 import { registerGitHubCommands } from './commands/github';
 import { ExtraheaderMigration } from './migrations/extraheaderMigration';
 import { AccountVerifier } from './auth/accountVerifier';
@@ -23,6 +17,8 @@ import { logger } from './utils/logger';
 import { getWorkspaceRepoPath } from './utils/workspace';
 
 let statusBarItem: vscode.StatusBarItem;
+let activeEditorDebounceTimer: NodeJS.Timeout | undefined;
+let startupCheckTimer: NodeJS.Timeout | undefined;
 const promptedRepos = new Set<string>();
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
@@ -239,13 +235,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   );
 
   registerProfileCommands(context, profileManager, systemDiscovery, gitClient, refreshAll, accountVerifier);
-  registerRepositoryCommands(context, operationManager, profileManager, refreshAll);
-  registerBranchCommands(context, operationManager, refreshAll);
-  registerCommitCommands(context, operationManager, refreshAll);
-  registerSyncCommands(context, operationManager, refreshAll);
-  registerStashCommands(context, operationManager, refreshAll);
-  registerTagCommands(context, operationManager, gitClient, refreshAll);
-  registerGitHubCommands(context, operationManager, repoDiscovery);
+  registerGitHubCommands(context, repoDiscovery);
 
   // 6. Handle Workspace Folder Changes & Auto Profile Matching (Section 2)
   const promptUnboundRepo = async (repo: GitRepository) => {
@@ -349,13 +339,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         });
     }
   } else {
-    setTimeout(() => {
+    startupCheckTimer = setTimeout(() => {
       checkWorkspaceProfiles().catch(err => logger.error(`Workspace check error: ${String(err)}`));
     }, 1000);
   }
 
   let lastActiveRepoPath: string | undefined;
-  let activeEditorDebounceTimer: NodeJS.Timeout | undefined;
 
   // Listen to active editor changes to keep status bar and sidebar aligned in multi-root workspaces
   context.subscriptions.push(
@@ -398,4 +387,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
 export function deactivate(): void {
   logger.info('Deactivating GitAxis extension...');
+  if (startupCheckTimer) {
+    clearTimeout(startupCheckTimer);
+    startupCheckTimer = undefined;
+  }
+  if (activeEditorDebounceTimer) {
+    clearTimeout(activeEditorDebounceTimer);
+    activeEditorDebounceTimer = undefined;
+  }
 }

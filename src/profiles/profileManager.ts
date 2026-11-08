@@ -69,6 +69,8 @@ export class ProfileManager {
     const updated = await this.store.update(id, input);
     if (secretToken && (input.authentication?.type === 'pat' || updated.authentication.type === 'pat')) {
       await this.authManager.saveTokenForProfile(id, secretToken);
+    } else if (input.authentication?.type && input.authentication.type !== 'pat') {
+      await this.authManager.clearAuthForProfile(id);
     }
     logger.info(`Profile updated: ${updated.name} (${id})`);
     return updated;

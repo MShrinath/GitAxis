@@ -269,7 +269,14 @@ export function registerProfileCommands(
         sshKeyPath = await vscode.window.showInputBox({
           title: 'SSH Key Path (Optional)',
           prompt: 'Enter path to SSH private key (e.g. ~/.ssh/id_ed25519), or leave empty for default agent/keys',
+          validateInput: val => {
+            if (!val || val.trim().length === 0) return undefined;
+            return Validation.isValidSshKeyPath(val)
+              ? undefined
+              : 'Invalid SSH key path. Quotes, control characters, or option flags are not allowed.';
+          },
         });
+        if (sshKeyPath === undefined) return;
       }
 
       const input: CreateProfileInput = {
@@ -374,7 +381,7 @@ export function registerProfileCommands(
           const active = await profileManager.getActiveProfile();
           if (active?.id === selected.profileId) {
             const workspaceFolder = getWorkspaceRepoPath();
-            if (workspaceFolder) {
+            if (workspaceFolder || updated.git.scope === 'global') {
               await profileManager.applyIdentityToRepository(updated, workspaceFolder);
             }
           }

@@ -192,7 +192,7 @@ export class FolderRuleManager {
 
     // SSH core.sshCommand
     const rawSshKeyPath = (profile.authentication as { sshKeyPath?: string })?.sshKeyPath?.trim();
-    if (profile.authentication.type === 'ssh' && rawSshKeyPath) {
+    if (profile.authentication.type === 'ssh' && rawSshKeyPath && Validation.isValidSshKeyPath(rawSshKeyPath)) {
       const sshCommand = Platform.resolveSshCommand(rawSshKeyPath, this.homedir, true);
       lines.push(`[core]`);
       lines.push(`\tsshCommand = ${sshCommand}`);
@@ -227,7 +227,7 @@ export class FolderRuleManager {
       await runGitConfig('user.email', profile.git.email);
 
       const rawSshKeyPath = (profile.authentication as { sshKeyPath?: string })?.sshKeyPath?.trim();
-      if (profile.authentication.type === 'ssh' && rawSshKeyPath) {
+      if (profile.authentication.type === 'ssh' && rawSshKeyPath && Validation.isValidSshKeyPath(rawSshKeyPath)) {
         const sshCommand = Platform.resolveSshCommand(rawSshKeyPath, this.homedir, false);
         await runGitConfig('core.sshCommand', sshCommand);
       }
@@ -275,7 +275,9 @@ export class FolderRuleManager {
     if (/^(?:https?:\/\/|git@|ssh:\/\/)/i.test(trimmed)) {
       return `hasconfig:remote.*.url:${trimmed}`;
     }
-    return `gitdir:${this.formatGitdirPattern(trimmed)}`;
+    const isCaseInsensitive = Platform.isWindows() || Platform.isMacOS() || /^[a-zA-Z]:[/\\]/i.test(trimmed);
+    const prefix = isCaseInsensitive ? 'gitdir/i:' : 'gitdir:';
+    return `${prefix}${this.formatGitdirPattern(trimmed)}`;
   }
 
   /**

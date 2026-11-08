@@ -256,7 +256,11 @@ export class HtmlBuilder {
         : profiles
             .map(p => {
               const isActive = profile?.id === p.id;
-              const authText = p.authentication.type === 'pat' ? 'PAT (token saved)' : p.authentication.type;
+              const authText = p.authentication.type === 'pat'
+                ? 'PAT (token saved)'
+                : p.authentication.type === 'ssh'
+                ? (p.authentication.sshKeyPath ? `SSH (${p.authentication.sshKeyPath})` : 'SSH')
+                : p.authentication.type;
               const pStatus = state.profileStatuses ? state.profileStatuses[p.id] : undefined;
               const isVerified = pStatus ? (pStatus.status === 'verified' || (!pStatus.status && pStatus.verified)) : false;
               const isNeutral = pStatus ? pStatus.status === 'not-verified' : false;
@@ -334,12 +338,27 @@ export class HtmlBuilder {
       </div>
 
       <div class="form-group">
+        <label class="form-label" for="form-auth-type">Authentication Type</label>
+        <select id="form-auth-type" class="input-text">
+          <option value="none">None</option>
+          <option value="pat" selected>Personal Access Token (PAT)</option>
+          <option value="ssh">SSH Key</option>
+        </select>
+      </div>
+
+      <div class="form-group" id="form-group-pat">
         <label class="form-label" for="form-pat">Personal Access Token (PAT) <span class="opt">(optional)</span></label>
         <div class="pat-row">
           <input type="password" id="form-pat" class="input-text" placeholder="ghp_xxxxxxxxxxxx" autocomplete="off" />
           <button type="button" id="btn-toggle-pat" class="btn btn-secondary btn-sm" data-action="togglePat">Show</button>
         </div>
         <div class="hint-text pat-hint">Stored securely in VS Code SecretStorage.</div>
+      </div>
+
+      <div class="form-group" id="form-group-ssh" style="display: none;">
+        <label class="form-label" for="form-ssh-key">SSH Key Path <span class="opt">(optional)</span></label>
+        <input type="text" id="form-ssh-key" class="input-text" placeholder="e.g. ~/.ssh/id_ed25519" autocomplete="off" />
+        <div class="hint-text">Leave blank to use default SSH agent/keys.</div>
       </div>
 
       <div class="form-group">

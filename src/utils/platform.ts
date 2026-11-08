@@ -1,5 +1,6 @@
 import * as os from 'os';
 import * as path from 'path';
+import { Validation } from './validation';
 
 export class Platform {
   public static isWindows(): boolean {
@@ -24,7 +25,13 @@ export class Platform {
   }
 
   public static resolveSshCommand(rawKeyPath: string, homedir: string = os.homedir(), escapeQuotes: boolean = false): string {
-    const cleanKeyPath = rawKeyPath.replace(/^["']|["']$/g, '').trim();
+    let cleanKeyPath = rawKeyPath.trim();
+    if ((cleanKeyPath.startsWith('"') && cleanKeyPath.endsWith('"')) || (cleanKeyPath.startsWith("'") && cleanKeyPath.endsWith("'"))) {
+      cleanKeyPath = cleanKeyPath.slice(1, -1).trim();
+    }
+    if (!Validation.isValidSshKeyPath(cleanKeyPath)) {
+      throw new Error(`Invalid SSH key path: "${rawKeyPath}"`);
+    }
     let resolvedKeyPath = cleanKeyPath;
     if (resolvedKeyPath.startsWith('~')) {
       resolvedKeyPath = path.join(homedir, resolvedKeyPath.slice(1));

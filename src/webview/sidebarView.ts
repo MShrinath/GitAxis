@@ -4,7 +4,7 @@ import { DiscoveredAccount, HtmlBuilder, WebviewState } from './html';
 import { ProfileManager } from '../profiles/profileManager';
 import { RepositoryDiscovery } from '../discovery/repositoryDiscovery';
 import { SystemDiscovery } from '../discovery/systemDiscovery';
-import { CreateProfileInput, GitProfile, GitRepository, ProfileMatchResult, UpdateProfileInput } from '../contracts';
+import { AuthenticationConfigInput, CreateProfileInput, GitProfile, GitRepository, ProfileMatchResult, UpdateProfileInput } from '../contracts';
 import { Platform } from '../utils/platform';
 import { Validation } from '../utils/validation';
 import { logger } from '../utils/logger';
@@ -98,21 +98,45 @@ export class SidebarViewProvider implements vscode.WebviewViewProvider {
               break;
             }
 
+            const rawSshKey = typeof data.sshKeyPath === 'string' ? data.sshKeyPath.trim() : undefined;
+            const isSsh = data.authType === 'ssh' || (!data.authType && Boolean(rawSshKey));
+            if (isSsh && rawSshKey && !Validation.isValidSshKeyPath(rawSshKey)) {
+              this.postSaveError(`Invalid SSH key path: "${data.sshKeyPath}". Path contains invalid characters or command flags.`);
+              break;
+            }
+
             const baseFields = this.toProfileGitFields(data);
             const gh = this.extractGitHubIdentity(data);
+            const patVal = typeof data.pat === 'string' ? data.pat.trim() : undefined;
+
+            let authConfig: AuthenticationConfigInput;
+            if (isSsh) {
+              authConfig = {
+                type: 'ssh',
+                source: 'user-input',
+                sshKeyPath: rawSshKey || undefined,
+              };
+            } else if (data.authType === 'pat' || (!data.authType && patVal && patVal.length > 0)) {
+              authConfig = {
+                type: 'pat',
+                source: 'vs-code-secret-storage',
+              };
+            } else {
+              authConfig = {
+                type: 'none',
+                source: 'user-input',
+              };
+            }
+
             const input: CreateProfileInput = {
               ...baseFields,
               github: gh,
-              authentication: {
-                type: data.pat && typeof data.pat === 'string' && data.pat.trim() ? 'pat' : 'none',
-                source: data.pat && typeof data.pat === 'string' && data.pat.trim() ? 'vs-code-secret-storage' : 'user-input',
-              },
+              authentication: authConfig,
               source: 'manual',
               imported: false,
             };
 
-            const patVal = typeof data.pat === 'string' ? data.pat.trim() : undefined;
-            const created = await this.profileManager.createProfile(input, patVal || undefined);
+            const created = await this.profileManager.createProfile(input, !isSsh && data.authType === 'pat' && patVal ? patVal : undefined);
             await this.applyProfileIfActive(created);
             this.view?.webview.postMessage({ command: 'saveSuccess', profileId: created.id });
             vscode.window.showInformationMessage(`Profile "${created.name}" created successfully!`);
@@ -130,6 +154,13 @@ export class SidebarViewProvider implements vscode.WebviewViewProvider {
             const valError = this.validateProfileFormData(data);
             if (valError) {
               this.postSaveError(valError);
+              break;
+            }
+
+            const rawSshKey = typeof data.sshKeyPath === 'string' ? data.sshKeyPath.trim() : undefined;
+            const isSsh = data.authType === 'ssh' || (!data.authType && Boolean(rawSshKey));
+            if (isSsh && rawSshKey && !Validation.isValidSshKeyPath(rawSshKey)) {
+              this.postSaveError(`Invalid SSH key path: "${data.sshKeyPath}". Path contains invalid characters or command flags.`);
               break;
             }
 
@@ -153,14 +184,29 @@ export class SidebarViewProvider implements vscode.WebviewViewProvider {
             };
 
             const patVal = typeof data.pat === 'string' ? data.pat.trim() : undefined;
-            if (patVal && patVal.length > 0) {
+
+            if (isSsh) {
+              input.authentication = {
+                type: 'ssh',
+                source: 'user-input',
+                sshKeyPath: rawSshKey || '',
+              };
+            } else if (data.authType === 'none') {
+              input.authentication = {
+                type: 'none',
+                source: 'user-input',
+                sshKeyPath: '',
+              };
+            } else if (data.authType === 'pat' || (!data.authType && patVal && patVal.length > 0)) {
               input.authentication = {
                 type: 'pat',
                 source: 'vs-code-secret-storage',
+                sshKeyPath: '',
               };
             }
 
-            const updated = await this.profileManager.updateProfile(data.id, input, patVal || undefined);
+            const secretToSave = !isSsh && data.authType === 'pat' && patVal && patVal.length > 0 ? patVal : undefined;
+            const updated = await this.profileManager.updateProfile(data.id, input, secretToSave);
             this.accountVerifier?.clearCache(data.id);
             await this.applyProfileIfActive(updated);
             this.view?.webview.postMessage({ command: 'saveSuccess', profileId: updated.id });
@@ -471,6 +517,12 @@ export class SidebarViewProvider implements vscode.WebviewViewProvider {
     if (!Validation.isValidEmail(data.gitEmail)) {
       return 'Please enter a valid Git email address.';
     }
+    const isSsh = data.authType === 'ssh' || (!data.authType && Boolean(data.sshKeyPath && typeof data.sshKeyPath === 'string' && data.sshKeyPath.trim()));
+    if (isSsh && data.sshKeyPath && typeof data.sshKeyPath === 'string' && data.sshKeyPath.trim()) {
+      if (!Validation.isValidSshKeyPath(data.sshKeyPath.trim())) {
+        return `Invalid SSH key path: "${data.sshKeyPath}". Path contains invalid characters or command flags.`;
+      }
+    }
     return undefined;
   }
 
@@ -483,7 +535,7 @@ export class SidebarViewProvider implements vscode.WebviewViewProvider {
     const active = await this.profileManager.getActiveProfile();
     if (active?.id === profile.id) {
       const repoPath = await this.getActiveRepoPath();
-      if (repoPath) {
+      if (repoPath || profile.git.scope === 'global') {
         await this.profileManager.applyIdentityToRepository(profile, repoPath);
       }
     }

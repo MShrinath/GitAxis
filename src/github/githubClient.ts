@@ -52,6 +52,7 @@ export class GitHubClient {
           method,
           headers,
           body: body ? JSON.stringify(body) : undefined,
+          signal: AbortSignal.timeout(5000),
         });
       } catch (networkErr) {
         logger.warn(`Direct fetch network error, falling back to gh CLI: ${String(networkErr)}`);

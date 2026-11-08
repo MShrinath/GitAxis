@@ -96,6 +96,23 @@ export class Validation {
     if (trimmed.length === 0 || trimmed.length > 512) return false;
     return true;
   }
+
+  public static isValidSshKeyPath(keyPath: string): boolean {
+    if (!keyPath || typeof keyPath !== 'string') return false;
+    let trimmed = keyPath.trim();
+    if ((trimmed.startsWith('"') && trimmed.endsWith('"')) || (trimmed.startsWith("'") && trimmed.endsWith("'"))) {
+      trimmed = trimmed.slice(1, -1).trim();
+    }
+    // Reject quotes, control chars, semicolons, shell metacharacters
+    if (/[\r\n"';#&|`$><\x00-\x1f\x7f]/.test(trimmed)) return false;
+    // Prevent option injection (cannot start with dash)
+    if (trimmed.startsWith('-')) return false;
+    // Reject SSH command injection vectors like ProxyCommand or LocalCommand
+    if (/-(?:o\s*proxycommand|o\s*localcommand)/i.test(trimmed) || /proxycommand/i.test(trimmed) || /localcommand/i.test(trimmed)) {
+      return false;
+    }
+    return trimmed.length > 0 && trimmed.length <= 512;
+  }
 }
 
 

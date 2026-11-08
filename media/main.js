@@ -52,6 +52,18 @@
     }
   }
 
+  function updateAuthTypeVisibility() {
+    const authType = document.getElementById('form-auth-type')?.value || 'none';
+    const patGroup = document.getElementById('form-group-pat');
+    const sshGroup = document.getElementById('form-group-ssh');
+    if (patGroup) {
+      patGroup.style.display = authType === 'pat' ? 'block' : 'none';
+    }
+    if (sshGroup) {
+      sshGroup.style.display = authType === 'ssh' ? 'block' : 'none';
+    }
+  }
+
   function saveProfileForm() {
     hideFormError();
     const id = (document.getElementById('form-profile-id')?.value || '').trim();
@@ -60,7 +72,9 @@
     const gitEmail = (document.getElementById('form-git-email')?.value || '').trim();
     const githubUsername = (document.getElementById('form-gh-user')?.value || '').trim();
     const host = (document.getElementById('form-host')?.value || '').trim() || 'github.com';
-    const pat = (document.getElementById('form-pat')?.value || '').trim();
+    const authType = (document.getElementById('form-auth-type')?.value || 'none').trim();
+    const pat = authType === 'pat' ? (document.getElementById('form-pat')?.value || '').trim() : '';
+    const sshKeyPath = authType === 'ssh' ? (document.getElementById('form-ssh-key')?.value || '').trim() : '';
     const scopeEl = document.querySelector('input[name="form-scope"]:checked');
     const scope = scopeEl ? scopeEl.value : 'local';
 
@@ -87,12 +101,12 @@
     if (id) {
       vscode.postMessage({
         command: 'updateProfileFromForm',
-        data: { id, name, gitName, gitEmail, githubUsername, host, pat, scope },
+        data: { id, name, gitName, gitEmail, githubUsername, host, authType, pat, sshKeyPath, scope },
       });
     } else {
       vscode.postMessage({
         command: 'createProfileFromForm',
-        data: { name, gitName, gitEmail, githubUsername, host, pat, scope },
+        data: { name, gitName, gitEmail, githubUsername, host, authType, pat, sshKeyPath, scope },
       });
     }
   }
@@ -103,6 +117,15 @@
       patInput.value = '';
       patInput.placeholder = 'ghp_xxxxxxxxxxxx';
     }
+    const sshInput = document.getElementById('form-ssh-key');
+    if (sshInput) {
+      sshInput.value = '';
+    }
+    const authTypeSelect = document.getElementById('form-auth-type');
+    if (authTypeSelect) {
+      authTypeSelect.value = 'pat';
+    }
+    updateAuthTypeVisibility();
     const radio = document.querySelector('input[name="form-scope"][value="local"]');
     if (radio) radio.checked = true;
   }
@@ -147,6 +170,14 @@
         patInput.placeholder = 'ghp_xxxxxxxxxxxx';
       }
     }
+    if (document.getElementById('form-ssh-key')) {
+      document.getElementById('form-ssh-key').value = p.authentication?.sshKeyPath || '';
+    }
+    if (document.getElementById('form-auth-type')) {
+      const aType = p.authentication?.type || 'none';
+      document.getElementById('form-auth-type').value = (aType === 'ssh' || aType === 'pat') ? aType : 'none';
+    }
+    updateAuthTypeVisibility();
     const scopeVal = p.git.scope || 'local';
     const radio = document.querySelector('input[name="form-scope"][value="' + scopeVal + '"]');
     if (radio) radio.checked = true;
@@ -175,6 +206,15 @@
     if (document.getElementById('form-gh-user')) document.getElementById('form-gh-user').value = acc.github?.username || '';
     if (document.getElementById('form-host')) document.getElementById('form-host').value = acc.github?.host || 'github.com';
     resetPatAndScope();
+    if (acc.authentication?.type === 'ssh' || acc.authentication?.sshKeyPath) {
+      if (document.getElementById('form-auth-type')) document.getElementById('form-auth-type').value = 'ssh';
+      if (document.getElementById('form-ssh-key')) document.getElementById('form-ssh-key').value = acc.authentication?.sshKeyPath || '';
+    } else if (acc.authentication?.type === 'pat') {
+      if (document.getElementById('form-auth-type')) document.getElementById('form-auth-type').value = 'pat';
+    } else if (acc.authentication?.type === 'none' || !acc.authentication?.type) {
+      if (document.getElementById('form-auth-type')) document.getElementById('form-auth-type').value = 'none';
+    }
+    updateAuthTypeVisibility();
 
     if (document.getElementById('form-title')) {
       document.getElementById('form-title').innerText = 'IMPORT PROFILE: ' + (acc.name || 'Account');
@@ -189,6 +229,10 @@
   function startNewProfile() {
     cancelProfileForm();
     showProfileForm();
+    if (document.getElementById('form-auth-type')) {
+      document.getElementById('form-auth-type').value = 'pat';
+      updateAuthTypeVisibility();
+    }
     const formEl = document.getElementById('profile-form-section');
     if (formEl) formEl.scrollIntoView({ behavior: 'smooth' });
     const nameInput = document.getElementById('form-name');
@@ -303,6 +347,16 @@
         break;
     }
   });
+
+  // Delegated change handler for authentication type selection
+  document.addEventListener('change', function (event) {
+    if (event.target && event.target.id === 'form-auth-type') {
+      updateAuthTypeVisibility();
+    }
+  });
+
+  // Initial auth type visibility setup
+  updateAuthTypeVisibility();
 
   // Backend response listeners
   window.addEventListener('message', function (event) {
