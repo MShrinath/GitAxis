@@ -153,6 +153,43 @@ describe('Folder Rules & Set-and-Forget (v0.6.0)', () => {
       assert.strictEqual(resolved.isBound, false);
       assert.strictEqual(resolved.folderRule, '~/work/**');
     });
+
+    it('should fallback to matcher when no binding or folder rule matches', async () => {
+      const pWork = await profileManager.createProfile({
+        name: 'WorkProfile',
+        git: { name: 'Work User', email: 'work@company.com' },
+        github: { host: 'github.com', username: 'workdev' },
+        authentication: { type: 'none' },
+      });
+
+      const repoPath = path.join(customHomedir, 'other', 'matcher-repo');
+      const resolved = await profileManager.resolveProfileForRepository(repoPath, {
+        remotes: [{ name: 'origin', host: 'github.com', owner: 'workdev', repository: 'matcher-repo' }],
+      });
+
+      assert.ok(resolved);
+      assert.strictEqual(resolved.source, 'matcher');
+      assert.strictEqual(resolved.profile.id, pWork.id);
+      assert.strictEqual(resolved.isBound, false);
+    });
+
+    it('should fallback to active profile when unassociated and no remotes match', async () => {
+      const pDefault = await profileManager.createProfile({
+        name: 'DefaultProfile',
+        git: { name: 'Default User', email: 'default@me.com' },
+        authentication: { type: 'none' },
+      });
+      await profileManager.switchProfile(pDefault.id);
+
+      const repoPath = path.join(customHomedir, 'other', 'unknown-repo');
+      const resolved = await profileManager.resolveProfileForRepository(repoPath, {
+        remotes: [{ name: 'origin', host: 'gitlab.com', owner: 'unknown', repository: 'app' }],
+      });
+
+      assert.ok(resolved);
+      assert.strictEqual(resolved.source, 'fallback');
+      assert.strictEqual(resolved.profile.id, pDefault.id);
+    });
   });
 
   describe('3. Include File & includeIf Generation', () => {
@@ -200,10 +237,11 @@ describe('Folder Rules & Set-and-Forget (v0.6.0)', () => {
       const profiles = [pWork, pPersonal];
       const preview = await folderRuleManager.previewIncludeIfChanges(profiles);
 
+      const expectedPrefix = Platform.isWindows() || Platform.isMacOS() ? 'gitdir/i:' : 'gitdir:';
       assert.ok(preview.includeIfBlock.includes(GITAXIS_CONFIG_START));
       assert.ok(preview.includeIfBlock.includes(GITAXIS_CONFIG_END));
-      assert.ok(preview.includeIfBlock.includes('[includeIf "gitdir:~/work/"]'));
-      assert.ok(preview.includeIfBlock.includes('[includeIf "gitdir:~/personal/"]'));
+      assert.ok(preview.includeIfBlock.includes(`[includeIf "${expectedPrefix}~/work/"]`));
+      assert.ok(preview.includeIfBlock.includes(`[includeIf "${expectedPrefix}~/personal/"]`));
 
       const result = await folderRuleManager.applyIncludeIfRules(profiles);
       assert.strictEqual(result.applied, true);
@@ -212,7 +250,7 @@ describe('Folder Rules & Set-and-Forget (v0.6.0)', () => {
       assert.strictEqual(fs.existsSync(customGitConfigPath), true);
       const writtenConfig = fs.readFileSync(customGitConfigPath, 'utf8');
       assert.ok(writtenConfig.includes(GITAXIS_CONFIG_START));
-      assert.ok(writtenConfig.includes('[includeIf "gitdir:~/work/"]'));
+      assert.ok(writtenConfig.includes(`[includeIf "${expectedPrefix}~/work/"]`));
       assert.ok(writtenConfig.includes(GITAXIS_CONFIG_END));
 
       const workConfigPath = folderRuleManager.getProfileConfigPath(pWork);
@@ -302,6 +340,47 @@ describe('Folder Rules & Set-and-Forget (v0.6.0)', () => {
       assert.ok(resolved);
       assert.strictEqual(resolved.source, 'folder-rule');
       assert.strictEqual(resolved.profile.id, pAcme.id);
+    });
+  });
+
+  describe('6. Case-Sensitive gitdir: in includeIf', () => {
+    it('formatIncludeIfCondition should use gitdir/i: on Windows and macOS', () => {
+      const mgr = new FolderRuleManager(os.tmpdir());
+
+      const originalIsWin = Platform.isWindows;
+      const originalIsMac = Platform.isMacOS;
+
+      try {
+        // Mock Windows
+        (Platform as any).isWindows = () => true;
+        (Platform as any).isMacOS = () => false;
+        const winCond = mgr.formatIncludeIfCondition('~/work/**');
+        assert.ok(winCond.startsWith('gitdir/i:'), `Expected gitdir/i: but got ${winCond}`);
+
+        // Mock macOS
+        (Platform as any).isWindows = () => false;
+        (Platform as any).isMacOS = () => true;
+        const macCond = mgr.formatIncludeIfCondition('~/work/**');
+        assert.ok(macCond.startsWith('gitdir/i:'), `Expected gitdir/i: but got ${macCond}`);
+
+        // Mock Linux
+        (Platform as any).isWindows = () => false;
+        (Platform as any).isMacOS = () => false;
+        const linuxCond = mgr.formatIncludeIfCondition('~/work/**');
+        assert.ok(linuxCond.startsWith('gitdir:'), `Expected gitdir: but got ${linuxCond}`);
+        assert.ok(!linuxCond.startsWith('gitdir/i:'));
+
+        // Windows drive path on Linux should still use gitdir/i:
+        const driveCond = mgr.formatIncludeIfCondition('C:/work/**');
+        assert.ok(driveCond.startsWith('gitdir/i:'), `Expected gitdir/i: for drive path but got ${driveCond}`);
+
+        // Windows drive path with backslashes on Linux should also use gitdir/i:
+        const backslashDriveCond = mgr.formatIncludeIfCondition('C:\\work\\**');
+        assert.ok(backslashDriveCond.startsWith('gitdir/i:'), `Expected gitdir/i: for backslash drive path but got ${backslashDriveCond}`);
+      } finally {
+        (Platform as any).isWindows = originalIsWin;
+        (Platform as any).isMacOS = originalIsMac;
+      }
     });
   });
 });
