@@ -57,20 +57,32 @@ export class ProfileMatcher {
 
       // Check remote matches
       if (context.remotes && context.remotes.length > 0) {
-        for (const remote of context.remotes) {
+        let bestRemoteScore = 0;
+        let bestRemoteReasons: ProfileMatchReason[] = [];
+
+        const sortedRemotes = [...context.remotes].sort((a, b) => {
+          if (a.name === 'origin') return -1;
+          if (b.name === 'origin') return 1;
+          return 0;
+        });
+
+        for (const remote of sortedRemotes) {
+          let currentRemoteScore = 0;
+          const currentRemoteReasons: ProfileMatchReason[] = [];
+
           // Check remote host vs profile github host
-          if (profile.github?.host && remote.host) {
-            if (profile.github.host.toLowerCase() === remote.host.toLowerCase()) {
-              score += 20;
-              if (!reasons.includes('github-host')) {
-                reasons.push('github-host');
-              }
+          const effectiveHost = remote.pushHost || remote.host;
+          if (profile.github?.host && effectiveHost) {
+            if (profile.github.host.toLowerCase() === effectiveHost.toLowerCase()) {
+              currentRemoteScore += 20;
+              currentRemoteReasons.push('github-host');
             }
           }
 
           // Check remote owner vs profile github username and allowed orgs
-          if (remote.owner) {
-            const lowerRemote = remote.owner.toLowerCase();
+          const effectiveOwner = remote.pushOwner || remote.owner;
+          if (effectiveOwner) {
+            const lowerRemote = effectiveOwner.toLowerCase();
             let matchedOwner = false;
             if (profile.github?.username && profile.github.username.toLowerCase() === lowerRemote) {
               matchedOwner = true;
@@ -94,11 +106,21 @@ export class ProfileMatcher {
             }
 
             if (matchedOwner) {
-              score += 45;
-              if (!reasons.includes('remote-owner')) {
-                reasons.push('remote-owner');
-              }
+              currentRemoteScore += 45;
+              currentRemoteReasons.push('remote-owner');
             }
+          }
+
+          if (currentRemoteScore > bestRemoteScore) {
+            bestRemoteScore = currentRemoteScore;
+            bestRemoteReasons = currentRemoteReasons;
+          }
+        }
+
+        score += bestRemoteScore;
+        for (const r of bestRemoteReasons) {
+          if (!reasons.includes(r)) {
+            reasons.push(r);
           }
         }
       }

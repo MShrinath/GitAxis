@@ -7,6 +7,9 @@ export interface GitRemote {
   host?: string;
   owner?: string;
   repository?: string;
+  pushHost?: string;
+  pushOwner?: string;
+  pushRepository?: string;
 }
 
 export interface RepositoryStatus {

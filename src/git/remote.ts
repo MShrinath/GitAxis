@@ -2,16 +2,20 @@ import { GitRemote } from '../contracts';
 
 export class RemoteParser {
   public static parse(name: string, fetchUrl?: string, pushUrl?: string): GitRemote {
-    const url = fetchUrl || pushUrl || '';
-    const parsed = this.parseUrl(url);
+    const fetchParsed = fetchUrl ? this.parseUrl(fetchUrl) : undefined;
+    const pushParsed = pushUrl ? this.parseUrl(pushUrl) : undefined;
+    const primary = fetchParsed || pushParsed;
 
     return {
       name,
       fetchUrl,
       pushUrl,
-      host: parsed?.host,
-      owner: parsed?.owner,
-      repository: parsed?.repository,
+      host: primary?.host,
+      owner: primary?.owner,
+      repository: primary?.repository,
+      pushHost: pushParsed?.host,
+      pushOwner: pushParsed?.owner,
+      pushRepository: pushParsed?.repository,
     };
   }
 
@@ -19,13 +23,13 @@ export class RemoteParser {
     if (!url) return undefined;
     const trimmed = url.trim();
 
-    // 1. SSH style: git@github.com:owner/repo.git
-    const scpMatch = /^git@([^:]+):([^\/]+)\/(.+?)(?:\.git)?$/i.exec(trimmed);
+    // 1. SSH style: git@github.com:owner/repo.git or deploy@host:owner/repo.git
+    const scpMatch = /^([a-zA-Z0-9._-]+)@([^:]+):([^\/]+)\/(.+?)(?:\.git)?$/i.exec(trimmed);
     if (scpMatch) {
       return {
-        host: scpMatch[1],
-        owner: scpMatch[2],
-        repository: scpMatch[3],
+        host: scpMatch[2],
+        owner: scpMatch[3],
+        repository: scpMatch[4],
       };
     }
 

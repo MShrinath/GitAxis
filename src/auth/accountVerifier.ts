@@ -312,16 +312,16 @@ export class AccountVerifier {
         const passMatch = stdout.match(/^password=(.+)$/m);
         const token = passMatch ? passMatch[1].trim() : undefined;
         if (token) {
-          const apiUrl = host === 'github.com' ? 'https://api.github.com/user' : `https://${host}/api/v3/user`;
-          const res = await fetch(apiUrl, {
-            headers: {
-              Authorization: `Bearer ${token}`,
-              'User-Agent': 'GitAxis-VSCode-Extension',
-              Accept: 'application/vnd.github.v3+json',
-            },
-            signal: AbortSignal.timeout(5000),
-          });
-          if (res.ok) {
+          try {
+            const res = await this.fetchGitHubUser(host, token);
+            if (!res.ok) {
+              return {
+                success: false,
+                status: 'failed',
+                login: expectedUsername,
+                message: 'Credential rejected or expired',
+              };
+            }
             const user = (await res.json()) as { login: string };
             if (user.login.toLowerCase() === expectedUsername.toLowerCase()) {
               return {
@@ -330,7 +330,21 @@ export class AccountVerifier {
                 login: user.login,
                 message: `Verified @${user.login} via credential helper`,
               };
+            } else {
+              return {
+                success: false,
+                status: 'failed',
+                login: user.login,
+                message: `Credential helper authenticates as @${user.login}, but profile expects @${expectedUsername}.`,
+              };
             }
+          } catch (fetchErr) {
+            return {
+              success: false,
+              status: 'failed',
+              login: expectedUsername,
+              message: `Error verifying credential helper token: ${String(fetchErr)}`,
+            };
           }
         }
       } catch {}

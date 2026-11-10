@@ -169,16 +169,24 @@ export class PersistentProfileStore implements ProfileStore {
       },
       github:
         input.github !== undefined
-          ? input.github.username !== undefined && !input.github.username.trim()
-            ? undefined
-            : {
-                host: input.github.host?.trim() || current.github?.host || 'github.com',
-                username: input.github.username ? input.github.username.trim() : current.github?.username || '',
-                orgs:
-                  input.github.orgs !== undefined
-                    ? input.github.orgs.map(o => o.trim()).filter(Boolean)
-                    : current.github?.orgs,
+          ? (() => {
+              const effectiveUsername =
+                input.github.username !== undefined
+                  ? input.github.username.trim()
+                  : (current.github?.username || '');
+              const effectiveOrgs =
+                input.github.orgs !== undefined
+                  ? input.github.orgs.map(o => o.trim()).filter(Boolean)
+                  : current.github?.orgs;
+              if (effectiveUsername || (effectiveOrgs && effectiveOrgs.length > 0)) {
+                return {
+                  host: input.github.host?.trim() || current.github?.host || 'github.com',
+                  username: effectiveUsername,
+                  orgs: effectiveOrgs,
+                };
               }
+              return undefined;
+            })()
           : current.github,
       authentication: {
         ...current.authentication,

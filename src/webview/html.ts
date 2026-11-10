@@ -291,6 +291,7 @@ export class HtmlBuilder {
             <span class="sub">Scope: ${escapeHtml(p.git.scope || 'local')} · Auth: ${escapeHtml(authText)}</span>
           </div>
         </div>
+        <div class="verify-result-box hidden" id="verify-result-${escapeHtml(p.id)}"></div>
         <div class="btn-group">
           ${!isActive ? `<button type="button" class="btn btn-sm" data-action="switchProfile" data-profile-id="${escapeHtml(p.id)}">Switch</button>` : ''}
           <button type="button" class="btn btn-sm btn-secondary" data-action="editProfile" data-profile-id="${escapeHtml(p.id)}">Edit</button>

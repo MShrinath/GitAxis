@@ -77,6 +77,16 @@ export class ProfileManager {
   }
 
   public async deleteProfile(id: ProfileId): Promise<void> {
+    const profile = await this.store.get(id);
+    if (profile && profile.authentication?.type === 'pat') {
+      try {
+        const host = profile.github?.host || 'github.com';
+        const username = profile.github?.username || profile.git.name;
+        await this.gitClient.rejectCredential({ protocol: 'https', host, username });
+      } catch (err) {
+        logger.warn(`Failed to reject credential on delete for profile "${profile.name}": ${String(err)}`);
+      }
+    }
     await this.authManager.clearAuthForProfile(id);
     await this.store.delete(id);
     logger.info(`Profile deleted: ${id}`);
@@ -94,6 +104,17 @@ export class ProfileManager {
     const profile = await this.store.get(id);
     if (!profile) {
       throw new Error(`Profile with id "${id}" does not exist`);
+    }
+
+    const current = await this.store.getActive();
+    if (current && current.id !== id && current.authentication?.type === 'pat') {
+      try {
+        const host = current.github?.host || 'github.com';
+        const username = current.github?.username || current.git.name;
+        await this.gitClient.rejectCredential({ protocol: 'https', host, username }, { cwd: repositoryPath });
+      } catch (err) {
+        logger.warn(`Failed to reject previous profile credential: ${String(err)}`);
+      }
     }
 
     // Apply identity first (atomic)
@@ -282,19 +303,24 @@ export class ProfileManager {
               } catch {}
 
               if (owner && cleanRepo) {
-                const newUrl = `https://${ghUsername}@${hostWithPort}/${owner}/${cleanRepo}.git`;
-                if (isFetchHttps && remote.fetchUrl !== newUrl) {
-                  await this.gitClient.setRemoteUrl(targetPath, remote.name, newUrl);
-                  logger.info(`Updated fetch remote URL for "${remote.name}" to ${newUrl}`);
+                const fetchProto = remote.fetchUrl?.startsWith('http://') ? 'http' : 'https';
+                const fetchNewUrl = `${fetchProto}://${ghUsername}@${hostWithPort}/${owner}/${cleanRepo}.git`;
+
+                const pushProto = (remote.pushUrl || remote.fetchUrl)?.startsWith('http://') ? 'http' : 'https';
+                const pushNewUrl = `${pushProto}://${ghUsername}@${hostWithPort}/${owner}/${cleanRepo}.git`;
+
+                if (isFetchHttps && remote.fetchUrl !== fetchNewUrl) {
+                  await this.gitClient.setRemoteUrl(targetPath, remote.name, fetchNewUrl);
+                  logger.info(`Updated fetch remote URL for "${remote.name}" to ${fetchNewUrl}`);
                 }
                 if (isPushHttps) {
                   const pushUrlInConfig = await this.gitClient.getLocalConfig(targetPath, `remote.${remote.name}.pushurl`);
-                  if (pushUrlInConfig && pushUrlInConfig !== newUrl) {
-                    await this.gitClient.setRemoteUrl(targetPath, remote.name, newUrl, true);
-                    logger.info(`Updated push remote URL for "${remote.name}" to ${newUrl}`);
-                  } else if (remote.pushUrl && remote.pushUrl !== remote.fetchUrl && remote.pushUrl !== newUrl) {
-                    await this.gitClient.setRemoteUrl(targetPath, remote.name, newUrl, true);
-                    logger.info(`Updated push remote URL for "${remote.name}" to ${newUrl}`);
+                  if (pushUrlInConfig && pushUrlInConfig !== pushNewUrl) {
+                    await this.gitClient.setRemoteUrl(targetPath, remote.name, pushNewUrl, true);
+                    logger.info(`Updated push remote URL for "${remote.name}" to ${pushNewUrl}`);
+                  } else if (remote.pushUrl && remote.pushUrl !== remote.fetchUrl && remote.pushUrl !== pushNewUrl) {
+                    await this.gitClient.setRemoteUrl(targetPath, remote.name, pushNewUrl, true);
+                    logger.info(`Updated push remote URL for "${remote.name}" to ${pushNewUrl}`);
                   }
                 }
               }

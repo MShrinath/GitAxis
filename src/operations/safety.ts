@@ -10,7 +10,7 @@ export class OperationSafetyChecker {
 
     // Destructive operations:
     // 1. Force push
-    if (type === 'git.push' && input.force) {
+    if (type === 'git.push' && (input.force || input.forceWithLease)) {
       return {
         safety: 'destructive',
         confirmation: {

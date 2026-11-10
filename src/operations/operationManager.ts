@@ -164,6 +164,7 @@ export class OperationManager implements IOperationManager {
 
     const abortController = new AbortController();
     this.activeControllers.set(operation.id, abortController);
+    let auth: ResolvedAuthentication | undefined;
 
     try {
       if (abortController.signal.aborted) {
@@ -193,7 +194,7 @@ export class OperationManager implements IOperationManager {
       }
 
       // 2. Resolve Profile first (needed for safety context & mismatch checks)
-      const repoPath = (operation.input as any)?.repositoryPath;
+      const repoPath = (operation.input as any)?.repositoryPath || (operation.target as any)?.repositoryPath || (operation.target as any)?.path;
       let profile: GitProfile | undefined;
       let resolutionSource: string | undefined;
       if (operation.profileId) {
@@ -216,58 +217,54 @@ export class OperationManager implements IOperationManager {
           try {
             const localEmail = await this.gitClient.getLocalConfig(repoPath, 'user.email');
             const localName = await this.gitClient.getLocalConfig(repoPath, 'user.name');
-            const hasLocalIdentity = Boolean(localEmail || localName);
-            const shouldCheckCommitGuard = resolutionSource !== 'fallback' || !hasLocalIdentity;
 
-            if (shouldCheckCommitGuard) {
-              const effectiveEmail = localEmail || (await this.gitClient.getConfig(repoPath, 'user.email'));
-              const effectiveName = localName || (await this.gitClient.getConfig(repoPath, 'user.name'));
+            const effectiveEmail = localEmail || (await this.gitClient.getConfig(repoPath, 'user.email'));
+            const effectiveName = localName || (await this.gitClient.getConfig(repoPath, 'user.name'));
 
-              const emailMismatch =
-                effectiveEmail !== undefined &&
-                profile.git.email !== undefined &&
-                effectiveEmail.trim().toLowerCase() !== profile.git.email.trim().toLowerCase();
-              const nameMismatch =
-                effectiveName !== undefined &&
-                profile.git.name !== undefined &&
-                effectiveName.trim().toLowerCase() !== profile.git.name.trim().toLowerCase();
+            const emailMismatch =
+              effectiveEmail !== undefined &&
+              profile.git.email !== undefined &&
+              effectiveEmail.trim().toLowerCase() !== profile.git.email.trim().toLowerCase();
+            const nameMismatch =
+              effectiveName !== undefined &&
+              profile.git.name !== undefined &&
+              effectiveName.trim().toLowerCase() !== profile.git.name.trim().toLowerCase();
 
-              if (emailMismatch || nameMismatch) {
-                if (this.guardMode === 'block') {
-                  record.state = 'cancelled';
-                  return this.createErrorResult(
-                    operation.id,
-                    'GUARD_BLOCKED',
-                    `Commit blocked by GitAxis guard: Repo config (email: "${effectiveEmail || 'unset'}", name: "${effectiveName || 'unset'}") does not match profile "${profile.name}" (email: "${profile.git.email}", name: "${profile.git.name}").`,
-                    `Commit blocked by GitAxis guard: Git author does not match profile "${profile.name}".`,
-                    startedAt,
-                    record
+            if (emailMismatch || nameMismatch) {
+              if (this.guardMode === 'block') {
+                record.state = 'cancelled';
+                return this.createErrorResult(
+                  operation.id,
+                  'GUARD_BLOCKED',
+                  `Commit blocked by GitAxis guard: Repo config (email: "${effectiveEmail || 'unset'}", name: "${effectiveName || 'unset'}") does not match profile "${profile.name}" (email: "${profile.git.email}", name: "${profile.git.name}").`,
+                  `Commit blocked by GitAxis guard: Git author does not match profile "${profile.name}".`,
+                  startedAt,
+                  record
+                );
+              } else if (this.guardMode === 'warn') {
+                if (this.commitMismatchPrompt) {
+                  const decision = await this.commitMismatchPrompt(
+                    { email: effectiveEmail, name: effectiveName },
+                    profile
                   );
-                } else if (this.guardMode === 'warn') {
-                  if (this.commitMismatchPrompt) {
-                    const decision = await this.commitMismatchPrompt(
-                      { email: effectiveEmail, name: effectiveName },
-                      profile
+                  if (decision === 'cancel') {
+                    record.state = 'cancelled';
+                    return this.createErrorResult(
+                      operation.id,
+                      'OPERATION_CANCELLED',
+                      'User cancelled commit due to author mismatch',
+                      'Commit cancelled due to author mismatch',
+                      startedAt,
+                      record
                     );
-                    if (decision === 'cancel') {
-                      record.state = 'cancelled';
-                      return this.createErrorResult(
-                        operation.id,
-                        'OPERATION_CANCELLED',
-                        'User cancelled commit due to author mismatch',
-                        'Commit cancelled due to author mismatch',
-                        startedAt,
-                        record
-                      );
-                    } else if (decision === 'fix') {
-                      await this.profileManager.applyIdentityToRepository(profile, repoPath);
-                    }
+                  } else if (decision === 'fix') {
+                    await this.profileManager.applyIdentityToRepository(profile, repoPath);
                   }
-                  warnings.push({
-                    code: 'COMMIT_AUTHOR_MISMATCH',
-                    message: `Repo identity (${effectiveName} <${effectiveEmail}>) differs from profile "${profile.name}" (${profile.git.name} <${profile.git.email}>).`,
-                  });
                 }
+                warnings.push({
+                  code: 'COMMIT_AUTHOR_MISMATCH',
+                  message: `Repo identity (${effectiveName} <${effectiveEmail}>) differs from profile "${profile.name}" (${profile.git.name} <${profile.git.email}>).`,
+                });
               }
             }
           } catch (err) {
@@ -309,15 +306,16 @@ export class OperationManager implements IOperationManager {
             const targetRemoteName = (operation.target as any).remoteName || (operation.input as any).remote || 'origin';
             const targetRemote = remotes.find(r => r.name === targetRemoteName) || remotes[0];
 
-            if (targetRemote && targetRemote.owner) {
-              const isMatch = this.matchesRemoteOwner(targetRemote.owner, profile);
+            const effectiveOwner = targetRemote ? (targetRemote.pushOwner || targetRemote.owner) : undefined;
+            if (targetRemote && effectiveOwner) {
+              const isMatch = this.matchesRemoteOwner(effectiveOwner, profile);
               if (!isMatch) {
                 if (this.guardMode === 'block') {
                   record.state = 'cancelled';
                   return this.createErrorResult(
                     operation.id,
                     'GUARD_BLOCKED',
-                    `Push blocked by GitAxis guard: Remote owner "${targetRemote.owner}" does not match profile "${profile.name}" (@${profile.github?.username || 'none'}) or allowed orgs.`,
+                    `Push blocked by GitAxis guard: Remote owner "${effectiveOwner}" does not match profile "${profile.name}" (@${profile.github?.username || 'none'}) or allowed orgs.`,
                     `Push blocked by GitAxis guard: Remote owner mismatch.`,
                     startedAt,
                     record
@@ -331,8 +329,9 @@ export class OperationManager implements IOperationManager {
                     ? await this.profileManager.getProfile(matchResult.recommendedProfileId)
                     : undefined;
 
+                  let mismatchResolved = false;
                   if (this.profileMismatchPrompt) {
-                    const decision = await this.profileMismatchPrompt(profile, targetRemote.owner, suggested);
+                    const decision = await this.profileMismatchPrompt(profile, effectiveOwner, suggested);
                     if (decision === 'cancel') {
                       record.state = 'cancelled';
                       return this.createErrorResult(
@@ -346,25 +345,29 @@ export class OperationManager implements IOperationManager {
                     } else if (decision === 'switch' && suggested) {
                       await this.profileManager.switchProfile(suggested.id, repoPath);
                       profile = suggested;
+                      mismatchResolved = true;
                     } else if (decision === 'remember') {
                       const currentOrgs = profile.github?.orgs || [];
-                      if (!currentOrgs.includes(targetRemote.owner)) {
+                      if (!currentOrgs.includes(effectiveOwner)) {
                         await this.profileManager.updateProfile(profile.id, {
                           github: {
                             ...profile.github,
                             username: profile.github?.username || '',
                             host: profile.github?.host || 'github.com',
-                            orgs: [...currentOrgs, targetRemote.owner],
+                            orgs: [...currentOrgs, effectiveOwner],
                           },
                         });
                       }
+                      mismatchResolved = true;
                     }
                   }
 
-                  warnings.push({
-                    code: 'PROFILE_MISMATCH',
-                    message: `Active profile "${profile.name}" (${profile.github?.username || 'no user'}) does not match remote owner "${targetRemote.owner}".`,
-                  });
+                  if (!mismatchResolved) {
+                    warnings.push({
+                      code: 'PROFILE_MISMATCH',
+                      message: `Active profile "${profile.name}" (${profile.github?.username || 'no user'}) does not match remote owner "${effectiveOwner}".`,
+                    });
+                  }
                 }
               }
             }
@@ -524,7 +527,6 @@ export class OperationManager implements IOperationManager {
       const operationTimeout = isRemoteOperation ? 0 : (isLongRunningLocal ? 0 : 15000);
 
       // 6. Resolve Authentication (Runtime Only) - only when needed (network git ops or github.*)
-      let auth: ResolvedAuthentication | undefined;
       const needsAuth = isRemoteOperation || operation.type.startsWith('github.');
       if (needsAuth && profile) {
         const authManager = this.profileManager.getAuthManager();
@@ -540,15 +542,6 @@ export class OperationManager implements IOperationManager {
         timeout: operationTimeout,
         cwd: repoPath,
       });
-
-      // Clean up runtime credentials
-      if (auth) {
-        auth.credential = undefined;
-      }
-      const authManager = this.profileManager.getAuthManager();
-      if (authManager) {
-        authManager.clearRuntimeCredentials();
-      }
 
       if (abortController.signal.aborted) {
         record.state = 'cancelled';
@@ -653,6 +646,13 @@ export class OperationManager implements IOperationManager {
       return result;
     } finally {
       this.activeControllers.delete(operation.id);
+      if (auth) {
+        auth.credential = undefined;
+      }
+      const authManager = this.profileManager.getAuthManager();
+      if (authManager) {
+        authManager.clearRuntimeCredentials();
+      }
     }
   }
 

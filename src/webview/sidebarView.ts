@@ -536,7 +536,7 @@ export class SidebarViewProvider implements vscode.WebviewViewProvider {
     if (active?.id === profile.id) {
       const repoPath = await this.getActiveRepoPath();
       if (repoPath || profile.git.scope === 'global') {
-        await this.profileManager.applyIdentityToRepository(profile, repoPath);
+        await this.profileManager.applyIdentityToRepository(profile, repoPath, confirmGlobalGitChange);
       }
     }
   }

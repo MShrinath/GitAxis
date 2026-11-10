@@ -382,7 +382,7 @@ export function registerProfileCommands(
           if (active?.id === selected.profileId) {
             const workspaceFolder = getWorkspaceRepoPath();
             if (workspaceFolder || updated.git.scope === 'global') {
-              await profileManager.applyIdentityToRepository(updated, workspaceFolder);
+              await profileManager.applyIdentityToRepository(updated, workspaceFolder, confirmGlobalGitChange);
             }
           }
           vscode.window.showInformationMessage(`Profile "${profile.name}" updated.`);
@@ -505,8 +505,8 @@ export function registerProfileCommands(
           title: `GitAxis: Verifying profile "${profile.name}"...`,
         },
         async () => {
-          const res = await accountVerifier.verifyProfile(profile, repoRoot);
-          if (res.success) {
+          const res = await accountVerifier.verifyProfile(profile, repoRoot, { onDemand: true });
+          if (res.status === 'verified') {
             let detail = res.message;
             if (res.scopes && res.scopes.length > 0) {
               detail += `\nScopes: ${res.scopes.join(', ')}`;
@@ -515,6 +515,8 @@ export function registerProfileCommands(
               detail += `\nToken expires: ${res.expiration}`;
             }
             vscode.window.showInformationMessage(`✓ Profile "${profile.name}" verified!\n${detail}`);
+          } else if (res.status === 'not-verified') {
+            vscode.window.showWarningMessage(`Profile "${profile.name}" is not verified:\n${res.message}`);
           } else {
             vscode.window.showWarningMessage(`✗ Verification failed for "${profile.name}":\n${res.message}`);
           }

@@ -29,6 +29,9 @@ export class RepositoryParser {
 
       if (line.startsWith('? ')) {
         untracked++;
+      } else if (line.startsWith('! ')) {
+        // Ignored in porcelain v2
+        continue;
       } else if (line.startsWith('u ') || line.startsWith('1 U') || line.startsWith('2 U')) {
         conflicted++;
       } else if (line.startsWith('1 ') || line.startsWith('2 ')) {
@@ -39,16 +42,19 @@ export class RepositoryParser {
           if (xy[1] !== '.') modified++;
         }
       } else if (line.length >= 2) {
-        // Standard porcelain v1 fallback: "M ", " M", "??", "UU"
+        // Standard porcelain v1 fallback: "M ", " M", "??", "UU", "!!"
         const x = line[0];
         const y = line[1];
         if (x === '?' && y === '?') {
           untracked++;
+        } else if (x === '!' || y === '!') {
+          // Ignored in porcelain v1
+          continue;
         } else if (x === 'U' || y === 'U' || (x === 'A' && y === 'A') || (x === 'D' && y === 'D')) {
           conflicted++;
         } else {
-          if (x !== ' ' && x !== '?') staged++;
-          if (y !== ' ' && y !== '?') modified++;
+          if (x !== ' ' && x !== '?' && x !== '!') staged++;
+          if (y !== ' ' && y !== '?' && y !== '!') modified++;
         }
       }
     }

@@ -4,6 +4,7 @@ export interface BranchInfo {
   upstream?: string;
   ahead?: number;
   behind?: number;
+  isDetached?: boolean;
 }
 
 export class BranchParser {
@@ -18,9 +19,13 @@ export class BranchParser {
       const isCurrent = line.startsWith('*');
       const name = line.replace(/^\*\s*/, '').trim();
 
+      const isDetached = name.startsWith('(') && (name.includes('detached') || name.includes('no branch'));
+      const branchName = isDetached ? 'HEAD' : name;
+
       branches.push({
-        name,
+        name: branchName,
         isCurrent,
+        ...(isDetached ? { isDetached: true } : {}),
       });
     }
 
