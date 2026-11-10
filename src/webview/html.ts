@@ -354,7 +354,7 @@ export class HtmlBuilder {
           <button type="button" id="btn-toggle-pat" class="btn btn-secondary btn-sm" data-action="togglePat">Show</button>
           <button type="button" id="btn-verify-pat" class="btn btn-secondary btn-sm" data-action="verifyPatToken">Verify &amp; Auto-Fill</button>
         </div>
-        <div id="pat-verify-status" class="hint-text pat-hint">Stored securely in VS Code SecretStorage.</div>
+        <div id="pat-verify-status" class="hint-text pat-hint"></div>
       </div>
 
       <div class="form-group" id="form-group-ssh" style="display: none;">

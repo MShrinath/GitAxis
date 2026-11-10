@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.14.3] - 2026-11-10
+
+### Changed & Cleaned
+- **Sidebar Status Cleanup**: Removed static placeholder text beneath the Personal Access Token container to keep the sidebar form minimalist.
+- **Form Reset Hygiene**: Ensured the PAT status container resets cleanly without residual labels when editing, clearing, or cancelling profiles.
+
+---
+
 ## [0.14.2] - 2026-11-10
 
 ### Added & Enhanced

@@ -2,7 +2,7 @@
   "name": "gitaxis",
   "displayName": "GitAxis - Git & GitHub Profile Manager",
   "description": "Multi-profile Git and GitHub control center for VS Code. Switch work & personal accounts, automate folder routing, and isolate credentials.",
-  "version": "0.14.2",
+  "version": "0.14.3",
   "type": "commonjs",
   "license": "MIT",
   "pricing": "Free",

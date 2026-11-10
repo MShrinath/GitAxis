@@ -142,7 +142,7 @@
     resetPatAndScope();
     const patStatus = document.getElementById('pat-verify-status');
     if (patStatus) {
-      patStatus.innerHTML = 'Stored securely in VS Code SecretStorage.';
+      patStatus.innerHTML = '';
     }
     const sshStatus = document.getElementById('ssh-verify-status');
     if (sshStatus) {
@@ -188,9 +188,7 @@
     updateAuthTypeVisibility();
     const patStatus = document.getElementById('pat-verify-status');
     if (patStatus) {
-      patStatus.innerHTML = p.authentication?.type === 'pat'
-        ? '<span class="status-neutral">PAT saved in VS Code Secrets. Click "Verify &amp; Auto-Fill" with a new token to update.</span>'
-        : 'Stored securely in VS Code SecretStorage.';
+      patStatus.innerHTML = '';
     }
     const sshStatus = document.getElementById('ssh-verify-status');
     if (sshStatus) {
