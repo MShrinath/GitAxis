@@ -171,7 +171,7 @@ export function registerProfileCommands(
       const totalSteps = allowGlobalScope ? 6 : 5;
       let currentStep = 1;
 
-      // Step 1: Name
+      // Step 1: Profile Name
       const name = await vscode.window.showInputBox({
         title: `Create Profile (${currentStep++}/${totalSteps})`,
         prompt: 'Enter a profile name (e.g. work, personal, opensource)',
@@ -185,23 +185,132 @@ export function registerProfileCommands(
       });
       if (!name) return;
 
-      // Step 2: Git Name
+      // Step 2: Auth Mechanism & Auto-fill Discovery
+      const authOptions: { label: string; detail: string; type: AuthenticationType }[] = [
+        { label: 'Personal Access Token (PAT)', detail: 'Auto-fill identity & securely save token in Secrets', type: 'pat' },
+        { label: 'SSH', detail: 'Test connection & auto-fill identity from SSH key', type: 'ssh' },
+        { label: 'GitHub CLI', detail: 'Use credentials from gh CLI', type: 'github-cli' },
+        { label: 'Git Credential Manager', detail: 'Delegate auth to system credential helper', type: 'credential-manager' },
+        { label: 'None', detail: 'No remote authentication', type: 'none' },
+      ];
+
+      const authSelection = await vscode.window.showQuickPick(authOptions, {
+        title: `Create Profile (${currentStep++}/${totalSteps}): Authentication Method`,
+      });
+      if (!authSelection) return;
+
+      let patToken: string | undefined;
+      let sshKeyPath: string | undefined;
+      let suggestedGitName: string | undefined;
+      let suggestedGitEmail: string | undefined;
+      let suggestedGhUser: string | undefined;
+
+      if (authSelection.type === 'pat') {
+        patToken = await vscode.window.showInputBox({
+          title: 'GitHub Personal Access Token',
+          prompt: 'Enter Personal Access Token (stored encrypted in VS Code Secrets)',
+          password: true,
+          validateInput: val => (val.trim().length > 0 ? undefined : 'Token cannot be empty'),
+        });
+        if (!patToken) return;
+
+        if (accountVerifier) {
+          await vscode.window.withProgress(
+            { location: vscode.ProgressLocation.Notification, title: 'GitAxis: Verifying token with GitHub...' },
+            async () => {
+              try {
+                const res = await accountVerifier.verifyPatToken(patToken!);
+                if (res.success && res.login) {
+                  suggestedGhUser = res.login;
+                  suggestedGitName = res.name || res.login;
+                  suggestedGitEmail = res.email || `${res.login}@users.noreply.github.com`;
+                  if (res.scopes && res.scopes.length > 0 && !res.scopes.includes('repo')) {
+                    vscode.window.showWarningMessage(`Token verified for @${res.login}, but missing the recommended "repo" scope.`);
+                  } else {
+                    vscode.window.showInformationMessage(`Verified token for @${res.login}! Auto-filling Git identity.`);
+                  }
+                } else {
+                  vscode.window.showWarningMessage(`Could not verify PAT with GitHub (${res.message}). Proceeding with manual input.`);
+                }
+              } catch (verErr) {
+                vscode.window.showWarningMessage(`Could not verify PAT (${String(verErr)}). Proceeding with manual input.`);
+              }
+            }
+          );
+        }
+      } else if (authSelection.type === 'ssh') {
+        sshKeyPath = await vscode.window.showInputBox({
+          title: 'SSH Key Path (Optional)',
+          prompt: 'Enter path to SSH private key (e.g. ~/.ssh/id_ed25519), or leave empty for default agent/keys',
+          validateInput: val => {
+            if (!val || val.trim().length === 0) return undefined;
+            return Validation.isValidSshKeyPath(val)
+              ? undefined
+              : 'Invalid SSH key path. Quotes, control characters, or option flags are not allowed.';
+          },
+        });
+        if (sshKeyPath === undefined) return;
+
+        if (accountVerifier) {
+          await vscode.window.withProgress(
+            { location: vscode.ProgressLocation.Notification, title: 'GitAxis: Testing SSH authentication...' },
+            async () => {
+              try {
+                const res = await accountVerifier.verifySshKey(sshKeyPath?.trim() || undefined);
+                if (res.success && res.login) {
+                  suggestedGhUser = res.login;
+                  suggestedGitName = res.login;
+                  suggestedGitEmail = res.email || `${res.login}@users.noreply.github.com`;
+                  vscode.window.showInformationMessage(`SSH authenticated as @${res.login}! Auto-filling Git identity.`);
+                } else if (!res.success && res.message) {
+                  vscode.window.showWarningMessage(`SSH verification: ${res.message}. Proceeding with manual input.`);
+                }
+              } catch (sshErr) {
+                vscode.window.showWarningMessage(`Could not test SSH key (${String(sshErr)}). Proceeding with manual input.`);
+              }
+            }
+          );
+        }
+      }
+
+      // Step 3: Git Author Name
       const gitName = await vscode.window.showInputBox({
         title: `Create Profile (${currentStep++}/${totalSteps})`,
         prompt: 'Enter Git commit author name (e.g. Work User)',
+        value: suggestedGitName,
         validateInput: val => (val.trim().length > 0 ? undefined : 'Git name cannot be empty'),
       });
       if (!gitName) return;
 
-      // Step 3: Git Email
+      // Step 4: Git Email
       const gitEmail = await vscode.window.showInputBox({
         title: `Create Profile (${currentStep++}/${totalSteps})`,
         prompt: 'Enter Git commit email (e.g. work@company.com)',
+        value: suggestedGitEmail,
         validateInput: val => (Validation.isValidEmail(val) ? undefined : 'Please enter a valid email address'),
       });
       if (!gitEmail) return;
 
-      // Step 4: Identity Scope (Advanced option, hidden by default per Section 7)
+      // Step 5: GitHub Username & Host
+      const githubUsername = await vscode.window.showInputBox({
+        title: `Create Profile (${currentStep++}/${totalSteps})`,
+        prompt: 'Enter GitHub username (optional, press Enter to skip)',
+        value: suggestedGhUser,
+      });
+      if (githubUsername === undefined) return;
+
+      let githubHost = 'github.com';
+      if (githubUsername.trim()) {
+        const hostInput = await vscode.window.showInputBox({
+          title: 'GitHub Host',
+          prompt: 'Enter GitHub host (default: github.com)',
+          value: 'github.com',
+        });
+        if (hostInput === undefined) return;
+        if (hostInput.trim()) githubHost = hostInput.trim();
+      }
+
+      // Step 6: Identity Scope (Advanced option, hidden by default per Section 7)
       let scope: GitIdentityScope = 'local';
       if (allowGlobalScope) {
         const scopeSelection = await vscode.window.showQuickPick(
@@ -223,60 +332,6 @@ export function registerProfileCommands(
           );
           if (choice !== continueBtn) return;
         }
-      }
-
-      // Step 5: GitHub Username & Host
-      const githubUsername = await vscode.window.showInputBox({
-        title: `Create Profile (${currentStep++}/${totalSteps})`,
-        prompt: 'Enter GitHub username (optional, press Enter to skip)',
-      });
-
-      let githubHost = 'github.com';
-      if (githubUsername) {
-        const hostInput = await vscode.window.showInputBox({
-          title: 'GitHub Host',
-          prompt: 'Enter GitHub host (default: github.com)',
-          value: 'github.com',
-        });
-        if (hostInput) githubHost = hostInput.trim();
-      }
-
-      // Step 6: Auth Mechanism
-      const authOptions: { label: string; detail: string; type: AuthenticationType }[] = [
-        { label: 'GitHub CLI', detail: 'Use credentials from gh CLI', type: 'github-cli' },
-        { label: 'Git Credential Manager', detail: 'Delegate auth to system credential helper', type: 'credential-manager' },
-        { label: 'Personal Access Token (PAT)', detail: 'Securely saved in VS Code SecretStorage', type: 'pat' },
-        { label: 'SSH', detail: 'Use existing SSH keys', type: 'ssh' },
-        { label: 'None', detail: 'No remote authentication', type: 'none' },
-      ];
-
-      const authSelection = await vscode.window.showQuickPick(authOptions, {
-        title: `Create Profile (${currentStep++}/${totalSteps}): Authentication Method`,
-      });
-      if (!authSelection) return;
-
-      let patToken: string | undefined;
-      let sshKeyPath: string | undefined;
-      if (authSelection.type === 'pat') {
-        patToken = await vscode.window.showInputBox({
-          title: 'GitHub Personal Access Token',
-          prompt: 'Enter Personal Access Token (stored encrypted in VS Code Secrets)',
-          password: true,
-          validateInput: val => (val.trim().length > 0 ? undefined : 'Token cannot be empty'),
-        });
-        if (!patToken) return;
-      } else if (authSelection.type === 'ssh') {
-        sshKeyPath = await vscode.window.showInputBox({
-          title: 'SSH Key Path (Optional)',
-          prompt: 'Enter path to SSH private key (e.g. ~/.ssh/id_ed25519), or leave empty for default agent/keys',
-          validateInput: val => {
-            if (!val || val.trim().length === 0) return undefined;
-            return Validation.isValidSshKeyPath(val)
-              ? undefined
-              : 'Invalid SSH key path. Quotes, control characters, or option flags are not allowed.';
-          },
-        });
-        if (sshKeyPath === undefined) return;
       }
 
       const input: CreateProfileInput = {
@@ -507,6 +562,18 @@ export function registerProfileCommands(
         async () => {
           const res = await accountVerifier.verifyProfile(profile, repoRoot, { onDemand: true });
           if (res.status === 'verified') {
+            if (!profile.github?.username && res.login) {
+              try {
+                await profileManager.updateProfile(profile.id, {
+                  github: {
+                    host: profile.github?.host || 'github.com',
+                    username: res.login,
+                    orgs: profile.github?.orgs,
+                  },
+                });
+                onProfileChanged?.();
+              } catch {}
+            }
             let detail = res.message;
             if (res.scopes && res.scopes.length > 0) {
               detail += `\nScopes: ${res.scopes.join(', ')}`;

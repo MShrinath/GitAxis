@@ -352,14 +352,18 @@ export class HtmlBuilder {
         <div class="pat-row">
           <input type="password" id="form-pat" class="input-text" placeholder="ghp_xxxxxxxxxxxx" autocomplete="off" />
           <button type="button" id="btn-toggle-pat" class="btn btn-secondary btn-sm" data-action="togglePat">Show</button>
+          <button type="button" id="btn-verify-pat" class="btn btn-secondary btn-sm" data-action="verifyPatToken">Verify &amp; Auto-Fill</button>
         </div>
-        <div class="hint-text pat-hint">Stored securely in VS Code SecretStorage.</div>
+        <div id="pat-verify-status" class="hint-text pat-hint">Stored securely in VS Code SecretStorage.</div>
       </div>
 
       <div class="form-group" id="form-group-ssh" style="display: none;">
         <label class="form-label" for="form-ssh-key">SSH Key Path <span class="opt">(optional)</span></label>
-        <input type="text" id="form-ssh-key" class="input-text" placeholder="e.g. ~/.ssh/id_ed25519" autocomplete="off" />
-        <div class="hint-text">Leave blank to use default SSH agent/keys.</div>
+        <div class="pat-row">
+          <input type="text" id="form-ssh-key" class="input-text" placeholder="e.g. ~/.ssh/id_ed25519" autocomplete="off" />
+          <button type="button" id="btn-verify-ssh" class="btn btn-secondary btn-sm" data-action="verifySshKey">Test &amp; Auto-Fill</button>
+        </div>
+        <div id="ssh-verify-status" class="hint-text">Leave blank to use default SSH agent/keys.</div>
       </div>
 
       <div class="form-group">

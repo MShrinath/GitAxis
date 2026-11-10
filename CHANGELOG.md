@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.14.2] - 2026-11-10
+
+### Added & Enhanced
+- **Auto-Fill Identity from Verification**: Automatically populates GitHub username and suggests author name and commit email upon PAT verification or SSH key testing.
+
+### Fixed & Hardened
+- **Seamless Credential Helper Alignment**: Bypasses GitHub CLI credential helper collisions by configuring a repository-local helper so PAT approvals persist to Windows Credential Manager without askpass prompts.
+- **Remote Origin URL Account Pinning**: Automatically synchronizes and pins active account usernames in repository remote URLs, stripping stale account handles on profile switches.
+
+---
+
 ## [0.14.1] - 2026-11-10
 
 ### Fixed & Hardened

@@ -8,6 +8,7 @@ import { TagInfo, TagParser } from './tag';
 import { GitRemote, RepositoryStatus } from '../contracts';
 import { logger } from '../utils/logger';
 import { Validation } from '../utils/validation';
+import { Platform } from '../utils/platform';
 
 const execFileAsync = promisify(execFile);
 
@@ -133,6 +134,42 @@ export class GitClient {
     } catch {
       return '';
     }
+  }
+
+  public async getCredentialHelperForUrl(url: string, cwd?: string): Promise<string> {
+    try {
+      const { stdout } = await this.exec(['config', '--get-urlmatch', 'credential.helper', url], { cwd });
+      const trimmed = stdout.trim();
+      if (trimmed) return trimmed;
+    } catch {}
+    return this.getCredentialHelper(cwd);
+  }
+
+  public async getSystemCredentialHelper(): Promise<string> {
+    try {
+      const { stdout } = await this.exec(['config', '--system', '--get', 'credential.helper']);
+      const h = stdout.trim();
+      if (h && !h.includes('gh') && !h.includes('store')) {
+        return h;
+      }
+    } catch {}
+
+    try {
+      const { stdout } = await this.exec(['config', '--global', '--get-all', 'credential.helper']);
+      for (const line of stdout.split('\n')) {
+        const h = line.trim();
+        if (h && !h.includes('gh') && !h.includes('store')) {
+          return h;
+        }
+      }
+    } catch {}
+
+    if (Platform.isWindows()) {
+      return 'manager';
+    } else if (Platform.isMacOS()) {
+      return 'osxkeychain';
+    }
+    return 'cache';
   }
 
   public async approveCredential(

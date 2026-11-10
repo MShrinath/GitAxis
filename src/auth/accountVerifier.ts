@@ -18,6 +18,9 @@ export interface VerificationResult {
   success: boolean;
   status?: VerificationStatusState;
   login?: string;
+  name?: string;
+  email?: string;
+  id?: number | string;
   message: string;
   scopes?: string[];
   expiration?: string;
@@ -80,7 +83,8 @@ export class AccountVerifier {
   }
 
   private getApiUrl(host: string): string {
-    return host === 'github.com' ? 'https://api.github.com/user' : `https://${host}/api/v3/user`;
+    const cleanHost = Platform.normalizeGitHubHost(host);
+    return cleanHost === 'github.com' ? 'https://api.github.com/user' : `https://${cleanHost}/api/v3/user`;
   }
 
   private fetchGitHubUser(host: string, token: string): Promise<Response> {
@@ -102,7 +106,7 @@ export class AccountVerifier {
     login: string,
     expectedUsername: string | undefined,
     sourceDesc: 'Token' | 'gh CLI',
-    extra?: { scopes?: string[]; expiration?: string }
+    extra?: { scopes?: string[]; expiration?: string; name?: string; email?: string; id?: number | string }
   ): VerificationResult {
     if (this.isUsernameMismatch(login, expectedUsername)) {
       return {
@@ -122,22 +126,22 @@ export class AccountVerifier {
     };
   }
 
-  private async verifyPat(
-    profile: GitProfile,
-    host: string,
+  public async verifyPatToken(
+    token: string,
+    host: string = 'github.com',
     expectedUsername?: string
   ): Promise<VerificationResult> {
-    const token = await this.secretStore.getSecret(profile.id, 'github-token');
-    if (!token) {
+    const cleanToken = token.trim();
+    if (!cleanToken) {
       return {
         success: false,
         status: 'failed',
-        message: 'No Personal Access Token saved in SecretStorage for this profile.',
+        message: 'No Personal Access Token provided.',
       };
     }
 
     try {
-      const res = await this.fetchGitHubUser(host, token);
+      const res = await this.fetchGitHubUser(host, cleanToken);
 
       const scopesHeader = res.headers.get('x-oauth-scopes');
       const scopes = scopesHeader ? scopesHeader.split(',').map(s => s.trim()).filter(Boolean) : undefined;
@@ -153,8 +157,18 @@ export class AccountVerifier {
         return { success: false, status: 'failed', message: `GitHub API error (${res.status}): ${res.statusText}` };
       }
 
-      const user = (await res.json()) as { login: string };
-      return this.evaluateUserLogin(user.login, expectedUsername, 'Token', { scopes, expiration });
+      const user = (await res.json()) as { login: string; id?: number | string; name?: string | null; email?: string | null };
+      const email = user.email || (user.id ? `${user.id}+${user.login}@users.noreply.github.com` : `${user.login}@users.noreply.github.com`);
+      const name = user.name || undefined;
+      const id = user.id;
+
+      return this.evaluateUserLogin(user.login, expectedUsername, 'Token', {
+        scopes,
+        expiration,
+        name,
+        email,
+        id,
+      });
     } catch (err) {
       return {
         success: false,
@@ -162,6 +176,23 @@ export class AccountVerifier {
         message: `Network error verifying PAT: ${String(err)}`,
       };
     }
+  }
+
+  private async verifyPat(
+    profile: GitProfile,
+    host: string,
+    expectedUsername?: string
+  ): Promise<VerificationResult> {
+    const token = await this.secretStore.getSecret(profile.id, 'github-token');
+    if (!token) {
+      return {
+        success: false,
+        status: 'failed',
+        message: 'No Personal Access Token saved in SecretStorage for this profile.',
+      };
+    }
+
+    return this.verifyPatToken(token, host, expectedUsername);
   }
 
   private async verifyGitHubCli(
@@ -187,8 +218,12 @@ export class AccountVerifier {
         return { success: false, status: 'failed', message: `GitHub CLI token returned error (${res.status}).` };
       }
 
-      const user = (await res.json()) as { login: string };
-      return this.evaluateUserLogin(user.login, expectedUsername, 'gh CLI');
+      const user = (await res.json()) as { login: string; id?: number | string; name?: string | null; email?: string | null };
+      const email = user.email || (user.id ? `${user.id}+${user.login}@users.noreply.github.com` : `${user.login}@users.noreply.github.com`);
+      const name = user.name || undefined;
+      const id = user.id;
+
+      return this.evaluateUserLogin(user.login, expectedUsername, 'gh CLI', { name, email, id });
     } catch (err) {
       return {
         success: false,
@@ -198,12 +233,12 @@ export class AccountVerifier {
     }
   }
 
-  private async verifySsh(
-    profile: GitProfile,
-    host: string,
+  public async verifySshKey(
+    sshKeyPath?: string,
+    host: string = 'github.com',
     expectedUsername?: string
   ): Promise<VerificationResult> {
-    const rawSshKeyPath = profile.authentication.sshKeyPath?.trim();
+    const rawSshKeyPath = sshKeyPath?.trim();
     const args: string[] = [];
 
     if (rawSshKeyPath) {
@@ -223,7 +258,8 @@ export class AccountVerifier {
       args.push('-i', normalizedKeyPath, '-o', 'IdentitiesOnly=yes');
     }
 
-    const sshTarget = `git@${host}`;
+    const cleanHost = Platform.normalizeGitHubHost(host);
+    const sshTarget = `git@${cleanHost}`;
     args.push(
       '-o',
       'BatchMode=yes',
@@ -240,7 +276,7 @@ export class AccountVerifier {
     } catch (err: unknown) {
       const e = err as { stdout?: string; stderr?: string; code?: number; message?: string };
       const output = `${e.stdout || ''}\n${e.stderr || ''}`;
-      if (output.includes('Hi ') || output.includes('Permission denied')) {
+      if (/Hi\s+[a-zA-Z0-9_.-]+!/i.test(output) || /Permission denied/i.test(output)) {
         return this.parseSshOutput(output, expectedUsername);
       }
       return {
@@ -251,15 +287,25 @@ export class AccountVerifier {
     }
   }
 
+  private async verifySsh(
+    profile: GitProfile,
+    host: string,
+    expectedUsername?: string
+  ): Promise<VerificationResult> {
+    return this.verifySshKey(profile.authentication.sshKeyPath, host, expectedUsername);
+  }
+
   private parseSshOutput(output: string, expectedUsername?: string): VerificationResult {
-    const match = output.match(/Hi\s+([a-zA-Z0-9_\-]+)!/i);
+    const match = output.match(/Hi\s+([a-zA-Z0-9_.-]+)!/i);
     if (match) {
       const login = match[1];
+      const email = `${login}@users.noreply.github.com`;
       if (expectedUsername && login.toLowerCase() !== expectedUsername.toLowerCase()) {
         return {
           success: false,
           status: 'failed',
           login,
+          email,
           message: `SSH key authenticated as @${login}, expected @${expectedUsername}.`,
         };
       }
@@ -267,11 +313,12 @@ export class AccountVerifier {
         success: true,
         status: 'verified',
         login,
+        email,
         message: `Authenticated as @${login} via SSH`,
       };
     }
 
-    if (output.includes('Permission denied (publickey)')) {
+    if (/Permission denied/i.test(output)) {
       return {
         success: false,
         status: 'failed',

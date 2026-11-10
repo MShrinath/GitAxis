@@ -140,6 +140,14 @@
     if (document.getElementById('form-gh-user')) document.getElementById('form-gh-user').value = '';
     if (document.getElementById('form-host')) document.getElementById('form-host').value = 'github.com';
     resetPatAndScope();
+    const patStatus = document.getElementById('pat-verify-status');
+    if (patStatus) {
+      patStatus.innerHTML = 'Stored securely in VS Code SecretStorage.';
+    }
+    const sshStatus = document.getElementById('ssh-verify-status');
+    if (sshStatus) {
+      sshStatus.innerHTML = 'Leave blank to use default SSH agent/keys.';
+    }
     if (document.getElementById('form-title')) document.getElementById('form-title').innerText = 'CREATE / EDIT PROFILE';
     const submitBtn = document.getElementById('form-submit-btn');
     if (submitBtn) {
@@ -178,6 +186,26 @@
       document.getElementById('form-auth-type').value = (aType === 'ssh' || aType === 'pat') ? aType : 'none';
     }
     updateAuthTypeVisibility();
+    const patStatus = document.getElementById('pat-verify-status');
+    if (patStatus) {
+      patStatus.innerHTML = p.authentication?.type === 'pat'
+        ? '<span class="status-neutral">PAT saved in VS Code Secrets. Click "Verify &amp; Auto-Fill" with a new token to update.</span>'
+        : 'Stored securely in VS Code SecretStorage.';
+    }
+    const sshStatus = document.getElementById('ssh-verify-status');
+    if (sshStatus) {
+      sshStatus.innerHTML = 'Leave blank to use default SSH agent/keys.';
+    }
+    const verifyPatBtn = document.getElementById('btn-verify-pat');
+    if (verifyPatBtn) {
+      verifyPatBtn.disabled = false;
+      verifyPatBtn.innerText = 'Verify & Auto-Fill';
+    }
+    const verifySshBtn = document.getElementById('btn-verify-ssh');
+    if (verifySshBtn) {
+      verifySshBtn.disabled = false;
+      verifySshBtn.innerText = 'Test & Auto-Fill';
+    }
     const scopeVal = p.git.scope || 'local';
     const radio = document.querySelector('input[name="form-scope"][value="' + scopeVal + '"]');
     if (radio) radio.checked = true;
@@ -250,6 +278,59 @@
       input.type = 'password';
       btn.innerText = 'Show';
     }
+  }
+
+  function verifyPatTokenAction() {
+    const patInput = document.getElementById('form-pat');
+    const hostInput = document.getElementById('form-host');
+    const pat = (patInput ? patInput.value : '').trim();
+    const host = (hostInput ? hostInput.value : '').trim() || 'github.com';
+    const statusEl = document.getElementById('pat-verify-status');
+    const btn = document.getElementById('btn-verify-pat');
+
+    if (!pat) {
+      if (statusEl) {
+        statusEl.innerHTML = '<span class="status-unverified">Please paste or enter a PAT first.</span>';
+      }
+      return;
+    }
+
+    if (btn) {
+      btn.disabled = true;
+      btn.innerText = 'Verifying...';
+    }
+    if (statusEl) {
+      statusEl.innerHTML = '<span class="hint-text">Verifying token with GitHub...</span>';
+    }
+
+    vscode.postMessage({
+      command: 'verifyToken',
+      token: pat,
+      host: host,
+    });
+  }
+
+  function verifySshKeyAction() {
+    const keyInput = document.getElementById('form-ssh-key');
+    const hostInput = document.getElementById('form-host');
+    const sshKeyPath = (keyInput ? keyInput.value : '').trim();
+    const host = (hostInput ? hostInput.value : '').trim() || 'github.com';
+    const statusEl = document.getElementById('ssh-verify-status');
+    const btn = document.getElementById('btn-verify-ssh');
+
+    if (btn) {
+      btn.disabled = true;
+      btn.innerText = 'Testing...';
+    }
+    if (statusEl) {
+      statusEl.innerHTML = '<span class="hint-text">Testing SSH authentication...</span>';
+    }
+
+    vscode.postMessage({
+      command: 'testSshKey',
+      sshKeyPath: sshKeyPath,
+      host: host,
+    });
   }
 
   // Delegated click handler
@@ -326,6 +407,12 @@
       }
       case 'togglePat':
         togglePatVisibility();
+        break;
+      case 'verifyPatToken':
+        verifyPatTokenAction();
+        break;
+      case 'verifySshKey':
+        verifySshKeyAction();
         break;
       case 'saveProfileForm':
         saveProfileForm();
@@ -437,6 +524,83 @@
             exp.textContent = 'Expires: ' + msg.result.expiration;
             resBox.appendChild(exp);
           }
+        }
+      }
+    } else if (msg.command === 'verifyTokenResult') {
+      const statusEl = document.getElementById('pat-verify-status');
+      const verifyBtn = document.getElementById('btn-verify-pat');
+      if (verifyBtn) {
+        verifyBtn.disabled = false;
+        verifyBtn.innerText = 'Verify & Auto-Fill';
+      }
+      if (msg.success) {
+        if (msg.login) {
+          const ghUser = document.getElementById('form-gh-user');
+          if (ghUser) ghUser.value = msg.login;
+          const formName = document.getElementById('form-name');
+          if (formName && (!formName.value || formName.value.trim() === '')) {
+            formName.value = msg.login;
+          }
+        }
+        if (msg.name || msg.login) {
+          const gitName = document.getElementById('form-git-name');
+          const isGenericName = gitName && (!gitName.value || /^(user|git\s*user|github\s*user|work\s*user|default)$/i.test(gitName.value.trim()));
+          if (gitName && isGenericName) {
+            gitName.value = msg.name || msg.login;
+          }
+        }
+        if (msg.email) {
+          const gitEmail = document.getElementById('form-git-email');
+          const isGenericEmail = gitEmail && (!gitEmail.value || /^(user@example\.com|work@company\.com)$/i.test(gitEmail.value.trim()));
+          if (gitEmail && isGenericEmail) {
+            gitEmail.value = msg.email;
+          }
+        }
+        if (statusEl) {
+          const missingRepo = msg.scopes && msg.scopes.length > 0 && !msg.scopes.includes('repo');
+          if (missingRepo) {
+            statusEl.innerHTML = '<span class="status-unverified">✓ Verified @' + (msg.login || 'user') + ' (Warning: missing repo scope)</span>';
+          } else {
+            statusEl.innerHTML = '<span class="status-verified">✓ Verified @' + (msg.login || 'user') + '</span>';
+          }
+        }
+      } else {
+        if (statusEl) {
+          statusEl.innerHTML = '<span class="status-unverified">✗ ' + (msg.message || 'Verification failed') + '</span>';
+        }
+      }
+    } else if (msg.command === 'testSshResult') {
+      const statusEl = document.getElementById('ssh-verify-status');
+      const verifyBtn = document.getElementById('btn-verify-ssh');
+      if (verifyBtn) {
+        verifyBtn.disabled = false;
+        verifyBtn.innerText = 'Test & Auto-Fill';
+      }
+      if (msg.success) {
+        if (msg.login) {
+          const ghUser = document.getElementById('form-gh-user');
+          if (ghUser) ghUser.value = msg.login;
+          const formName = document.getElementById('form-name');
+          if (formName && (!formName.value || formName.value.trim() === '')) {
+            formName.value = msg.login;
+          }
+          const gitEmail = document.getElementById('form-git-email');
+          const isGenericEmail = gitEmail && (!gitEmail.value || /^(user@example\.com|work@company\.com)$/i.test(gitEmail.value.trim()));
+          if (gitEmail && isGenericEmail) {
+            gitEmail.value = msg.email || (msg.login + '@users.noreply.github.com');
+          }
+          const gitName = document.getElementById('form-git-name');
+          const isGenericName = gitName && (!gitName.value || /^(user|git\s*user|github\s*user|work\s*user|default)$/i.test(gitName.value.trim()));
+          if (gitName && isGenericName) {
+            gitName.value = msg.login;
+          }
+        }
+        if (statusEl) {
+          statusEl.innerHTML = '<span class="status-verified">✓ ' + (msg.message || ('Authenticated as @' + msg.login)) + '</span>';
+        }
+      } else {
+        if (statusEl) {
+          statusEl.innerHTML = '<span class="status-unverified">✗ ' + (msg.message || 'SSH test failed') + '</span>';
         }
       }
     } else if (msg.command === 'profileDeleted') {

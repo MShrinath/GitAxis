@@ -25,6 +25,8 @@ const ALLOWED_COMMANDS = new Set([
   'useRecommended',
   'verifyProfile',
   'dismissDiscovered',
+  'verifyToken',
+  'testSshKey',
 ]);
 
 export class SidebarViewProvider implements vscode.WebviewViewProvider {
@@ -106,8 +108,25 @@ export class SidebarViewProvider implements vscode.WebviewViewProvider {
             }
 
             const baseFields = this.toProfileGitFields(data);
-            const gh = this.extractGitHubIdentity(data);
+            let gh = this.extractGitHubIdentity(data);
             const patVal = typeof data.pat === 'string' ? data.pat.trim() : undefined;
+
+            if (!gh && this.accountVerifier) {
+              try {
+                const host = typeof data.host === 'string' && data.host.trim() ? data.host.trim() : 'github.com';
+                if (data.authType === 'pat' && patVal) {
+                  const res = await this.accountVerifier.verifyPatToken(patVal, host);
+                  if (res.success && res.login) {
+                    gh = { host, username: res.login };
+                  }
+                } else if (isSsh) {
+                  const res = await this.accountVerifier.verifySshKey(rawSshKey, host);
+                  if (res.success && res.login) {
+                    gh = { host, username: res.login };
+                  }
+                }
+              } catch {}
+            }
 
             let authConfig: AuthenticationConfigInput;
             if (isSsh) {
@@ -171,7 +190,29 @@ export class SidebarViewProvider implements vscode.WebviewViewProvider {
             }
 
             const baseFields = this.toProfileGitFields(data);
-            const gh = this.extractGitHubIdentity(data);
+            let gh = this.extractGitHubIdentity(data);
+            const patVal = typeof data.pat === 'string' ? data.pat.trim() : undefined;
+
+            if (!gh && this.accountVerifier) {
+              try {
+                const host = typeof data.host === 'string' && data.host.trim() ? data.host.trim() : 'github.com';
+                if (data.authType === 'pat') {
+                  const tokenToVerify = patVal || (await this.profileManager.getAuthManager().getPatAuth().getToken(existingProfile.id));
+                  if (tokenToVerify) {
+                    const res = await this.accountVerifier.verifyPatToken(tokenToVerify, host);
+                    if (res.success && res.login) {
+                      gh = { host, username: res.login };
+                    }
+                  }
+                } else if (isSsh) {
+                  const res = await this.accountVerifier.verifySshKey(rawSshKey, host);
+                  if (res.success && res.login) {
+                    gh = { host, username: res.login };
+                  }
+                }
+              } catch {}
+            }
+
             const input: UpdateProfileInput = {
               ...baseFields,
               github: gh
@@ -182,8 +223,6 @@ export class SidebarViewProvider implements vscode.WebviewViewProvider {
                     orgs: existingProfile.github?.orgs,
                   },
             };
-
-            const patVal = typeof data.pat === 'string' ? data.pat.trim() : undefined;
 
             if (isSsh) {
               input.authentication = {
@@ -347,10 +386,77 @@ export class SidebarViewProvider implements vscode.WebviewViewProvider {
                 result: res,
               });
               if (res.success) {
+                if (res.login && !profile.github?.username) {
+                  try {
+                    await this.profileManager.updateProfile(profile.id, {
+                      github: {
+                        host: profile.github?.host || 'github.com',
+                        username: res.login,
+                        orgs: profile.github?.orgs,
+                      },
+                    });
+                    this.onProfileChanged?.();
+                    await this.refresh();
+                  } catch {}
+                }
                 vscode.window.showInformationMessage(`Verified "${profile.name}": ${res.message}`);
               } else {
                 vscode.window.showWarningMessage(`Verification warning for "${profile.name}": ${res.message}`);
               }
+            }
+            break;
+          }
+
+          case 'verifyToken': {
+            const token = typeof message.token === 'string' ? message.token.trim() : '';
+            const host = typeof message.host === 'string' && message.host.trim() ? message.host.trim() : 'github.com';
+            if (!token) {
+              this.view?.webview.postMessage({
+                command: 'verifyTokenResult',
+                success: false,
+                message: 'Please enter a Personal Access Token to verify.',
+              });
+              break;
+            }
+            if (this.accountVerifier) {
+              const res = await this.accountVerifier.verifyPatToken(token, host);
+              this.view?.webview.postMessage({
+                command: 'verifyTokenResult',
+                success: res.success,
+                login: res.login,
+                name: res.name,
+                email: res.email,
+                scopes: res.scopes,
+                message: res.message,
+              });
+            } else {
+              this.view?.webview.postMessage({
+                command: 'verifyTokenResult',
+                success: false,
+                message: 'Account verification service is unavailable.',
+              });
+            }
+            break;
+          }
+
+          case 'testSshKey': {
+            const sshKeyPath = typeof message.sshKeyPath === 'string' ? message.sshKeyPath.trim() : undefined;
+            const host = typeof message.host === 'string' && message.host.trim() ? message.host.trim() : 'github.com';
+            if (this.accountVerifier) {
+              const res = await this.accountVerifier.verifySshKey(sshKeyPath, host);
+              this.view?.webview.postMessage({
+                command: 'testSshResult',
+                success: res.success,
+                login: res.login,
+                email: res.email,
+                message: res.message,
+              });
+            } else {
+              this.view?.webview.postMessage({
+                command: 'testSshResult',
+                success: false,
+                message: 'Account verification service is unavailable.',
+              });
             }
             break;
           }

@@ -80,9 +80,11 @@ export class ProfileManager {
     const profile = await this.store.get(id);
     if (profile && profile.authentication?.type === 'pat') {
       try {
-        const host = profile.github?.host || 'github.com';
-        const username = profile.github?.username || profile.git.name;
-        await this.gitClient.rejectCredential({ protocol: 'https', host, username });
+        const host = Platform.normalizeGitHubHost(profile.github?.host);
+        const username = profile.github?.username?.trim() || (profile.git.name && /^[a-zA-Z0-9_.-]+$/.test(profile.git.name) ? profile.git.name : undefined);
+        if (username) {
+          await this.gitClient.rejectCredential({ protocol: 'https', host, username });
+        }
       } catch (err) {
         logger.warn(`Failed to reject credential on delete for profile "${profile.name}": ${String(err)}`);
       }
@@ -106,33 +108,38 @@ export class ProfileManager {
       throw new Error(`Profile with id "${id}" does not exist`);
     }
 
+    let repoRoot = repositoryPath;
+    if (repositoryPath) {
+      try {
+        if (await this.gitClient.isRepository(repositoryPath)) {
+          repoRoot = await this.gitClient.getRoot(repositoryPath);
+        }
+      } catch {}
+    }
+
     const current = await this.store.getActive();
     if (current && current.id !== id && current.authentication?.type === 'pat') {
       try {
-        const host = current.github?.host || 'github.com';
-        const username = current.github?.username || current.git.name;
-        await this.gitClient.rejectCredential({ protocol: 'https', host, username }, { cwd: repositoryPath });
+        const host = Platform.normalizeGitHubHost(current.github?.host);
+        const username = current.github?.username?.trim() || (current.git.name && /^[a-zA-Z0-9_.-]+$/.test(current.git.name) ? current.git.name : undefined);
+        if (username) {
+          await this.gitClient.rejectCredential({ protocol: 'https', host, username }, { cwd: repoRoot });
+        }
       } catch (err) {
         logger.warn(`Failed to reject previous profile credential: ${String(err)}`);
       }
     }
 
     // Apply identity first (atomic)
-    if (repositoryPath || profile.git.scope === 'global') {
-      const applied = await this.applyIdentityToRepository(profile, repositoryPath, confirmGlobalChange);
+    if (repoRoot || profile.git.scope === 'global') {
+      const applied = await this.applyIdentityToRepository(profile, repoRoot, confirmGlobalChange);
       if (applied === false) {
         throw new Error(`Profile switch to "${profile.name}" was cancelled by user.`);
       }
     }
 
     // If repository path was provided, associate this repo with the profile so switching applies to current repo
-    if (repositoryPath) {
-      let repoRoot = repositoryPath;
-      try {
-        if (await this.gitClient.isRepository(repositoryPath)) {
-          repoRoot = await this.gitClient.getRoot(repositoryPath);
-        }
-      } catch {}
+    if (repoRoot) {
       await this.store.setAssociation(repoRoot, id);
     }
 
@@ -226,30 +233,48 @@ export class ProfileManager {
         try {
           const token = await this.authManager.getPatAuth().getToken(profile.id);
           if (token) {
-            const helper = await this.gitClient.getCredentialHelper(targetPath);
+            let helper = await this.gitClient.getCredentialHelperForUrl(`https://${host}`, targetPath);
+
+            // Bypass GitHub CLI helper collision: gh auth git-credential swallows approveCredential and breaks VS Code native push
+            if (isRepo && targetPath && (helper.includes('gh') || helper.includes('auth git-credential') || !helper)) {
+              const systemHelper = await this.gitClient.getSystemCredentialHelper();
+              await this.gitClient.setLocalConfig(targetPath, `credential.https://${host}.helper`, systemHelper);
+              logger.info(`Bypassed GitHub CLI credential helper collision on ${targetPath}: set local credential.https://${host}.helper to "${systemHelper}"`);
+              helper = systemHelper;
+            }
+
+            const effectiveUsername = ghUsername || (profile.git.name && /^[a-zA-Z0-9_.-]+$/.test(profile.git.name) ? profile.git.name : undefined);
             if (!helper) {
               logger.warn(`No git credential.helper configured; skipping storing PAT in credential helper for profile "${profile.name}".`);
             } else if (helper.includes('store')) {
               logger.warn(`Configured git credential.helper is plaintext "store"; skipping storing PAT to prevent plaintext storage for profile "${profile.name}".`);
-            } else {
-              const username = ghUsername || profile.git.name;
+            } else if (effectiveUsername) {
               await this.gitClient.approveCredential(
                 {
                   protocol: 'https',
                   host,
-                  username,
+                  username: effectiveUsername,
                   password: token,
                 },
                 { cwd: targetPath }
               );
-              logger.info(`Approved PAT credential in helper "${helper}" for ${username}@${host}`);
+              logger.info(`Approved PAT credential in helper "${helper}" for ${effectiveUsername}@${host}`);
             }
           }
         } catch (helperErr) {
           logger.warn(`Failed to approve PAT in credential helper: ${String(helperErr)}`);
         }
+      } else if (isRepo && targetPath) {
+        try {
+          const localHelper = await this.gitClient.getLocalConfig(targetPath, `credential.https://${host}.helper`);
+          if (localHelper) {
+            await this.gitClient.unsetLocalConfig(targetPath, `credential.https://${host}.helper`);
+            if (host.toLowerCase() !== 'github.com') {
+              await this.gitClient.unsetLocalConfig(targetPath, 'credential.https://github.com.helper');
+            }
+          }
+        } catch {}
       }
-
 
       // 5. SSH Key Alignment: If the profile authentication is SSH with an sshKeyPath, set core.sshCommand to use that key; unset it if switching to a non-SSH profile.
       const rawSshKeyPath = (profile.authentication as { sshKeyPath?: string })?.sshKeyPath?.trim();
@@ -274,7 +299,8 @@ export class ProfileManager {
       }
 
       // 6. Remote URL Synchronization: If the repository has HTTPS remotes matching the profile host, update the remote URL to embed the active profile's GitHub username (https://${username}@${host}/owner/repo.git), preventing Git Credential Manager from defaulting to another cached account.
-      if (isRepo && targetPath && ghUsername) {
+      const effectiveUsername = ghUsername || (profile.git.name && /^[a-zA-Z0-9_.-]+$/.test(profile.git.name) ? profile.git.name : undefined);
+      if (isRepo && targetPath) {
         const remotes = await this.gitClient.getRemotes(targetPath);
         const targetHost = host.toLowerCase();
         const targetHostname = targetHost.split(':')[0];
@@ -303,11 +329,12 @@ export class ProfileManager {
               } catch {}
 
               if (owner && cleanRepo) {
+                const userPrefix = effectiveUsername ? `${effectiveUsername}@` : '';
                 const fetchProto = remote.fetchUrl?.startsWith('http://') ? 'http' : 'https';
-                const fetchNewUrl = `${fetchProto}://${ghUsername}@${hostWithPort}/${owner}/${cleanRepo}.git`;
+                const fetchNewUrl = `${fetchProto}://${userPrefix}${hostWithPort}/${owner}/${cleanRepo}.git`;
 
                 const pushProto = (remote.pushUrl || remote.fetchUrl)?.startsWith('http://') ? 'http' : 'https';
-                const pushNewUrl = `${pushProto}://${ghUsername}@${hostWithPort}/${owner}/${cleanRepo}.git`;
+                const pushNewUrl = `${pushProto}://${userPrefix}${hostWithPort}/${owner}/${cleanRepo}.git`;
 
                 if (isFetchHttps && remote.fetchUrl !== fetchNewUrl) {
                   await this.gitClient.setRemoteUrl(targetPath, remote.name, fetchNewUrl);
