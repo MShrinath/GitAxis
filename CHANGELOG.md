@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.14.1] - 2026-11-10
+
+### Fixed & Hardened
+- **Security & Credential Isolation**: Fixed false-positive account verifications, added OS keychain credential eviction on profile switch, and ensured runtime memory tokens are sanitized on failures.
+- **Safety Guards**: Restored commit author guard on fallback profile resolution, classified `--force-with-lease` as destructive, and added confirmation before mutating global Git identities.
+- **Git & Remote Accuracy**: Added distinct push URL handling for forks, fixed detached HEAD branch parsing, prevented ignored files from marking status dirty, and preserved GitHub organizations on profile updates.
+
+---
+
 ## [0.14.0] - 2026-11-08
 
 ### Added & Enhanced
