@@ -1,84 +1,108 @@
 import {
   ISODateTime,
-  OperationGroupId,
   OperationId,
   ProfileId,
   RepositoryId,
 } from './common';
-import { OperationInputMap } from './operation-inputs';
-import { OperationTargetMap } from './operation-targets';
-import { OperationResult } from './operation-results';
-
-export type OperationType = keyof OperationInputMap;
 
 export type OperationSafety = 'read-only' | 'mutating' | 'destructive';
 
-export interface NoConfirmation {
-  required: false;
+export type ConfirmationRequirement =
+  | { required: false }
+  | { required: true; reason: string; warning?: string };
+
+export type OperationErrorCode =
+  | 'GIT_NOT_FOUND'
+  | 'NOT_A_REPOSITORY'
+  | 'PROFILE_NOT_FOUND'
+  | 'AUTHENTICATION_REQUIRED'
+  | 'AUTHENTICATION_FAILED'
+  | 'PERMISSION_DENIED'
+  | 'REMOTE_NOT_FOUND'
+  | 'REMOTE_REJECTED'
+  | 'BRANCH_NOT_FOUND'
+  | 'MERGE_CONFLICT'
+  | 'REBASE_CONFLICT'
+  | 'NOTHING_TO_COMMIT'
+  | 'NETWORK_ERROR'
+  | 'TIMEOUT'
+  | 'OPERATION_CANCELLED'
+  | 'CONFIRMATION_REQUIRED'
+  | 'INVALID_INPUT'
+  | 'PROFILE_MISMATCH'
+  | 'GUARD_BLOCKED'
+  | 'GUARD_CHECK_FAILED'
+  | 'UNKNOWN';
+
+export interface OperationError {
+  code: OperationErrorCode;
+  message: string;
+  userMessage: string;
+  retryable: boolean;
+  details?: Record<string, unknown>;
 }
 
-export interface UserConfirmation {
-  required: true;
-  reason: string;
-  warning?: string;
+export interface OperationWarning {
+  code: string;
+  message: string;
 }
 
-export type ConfirmationRequirement = NoConfirmation | UserConfirmation;
+export interface OperationResult<T = unknown> {
+  operationId: OperationId;
+  success: boolean;
+  data?: T;
+  error?: OperationError;
+  warnings?: OperationWarning[];
+  startedAt: ISODateTime;
+  completedAt: ISODateTime;
+}
 
-export type OperationInitiator =
-  | 'command-palette'
-  | 'activity-bar'
-  | 'webview'
-  | 'context-menu'
-  | 'automatic'
-  | 'system';
-
-export interface TypedOperation<TType extends OperationType = OperationType> {
+export interface Operation {
   id: OperationId;
-  groupId?: OperationGroupId;
-  type: TType;
-  input: OperationInputMap[TType];
-  target: OperationTargetMap[TType];
+  type: string;
+  input?: any;
+  target?: any;
   profileId?: ProfileId;
   repositoryId?: RepositoryId;
-  safety: OperationSafety;
-  confirmation: ConfirmationRequirement;
-  createdAt: ISODateTime;
-  initiatedBy: OperationInitiator;
+  safety?: OperationSafety;
+  confirmation?: ConfirmationRequirement;
+  createdAt?: ISODateTime;
+  initiatedBy?: string;
 }
 
-export type Operation = {
-  [TType in OperationType]: TypedOperation<TType>;
-}[OperationType];
-
-export function createOperation<TType extends OperationType>(
-  operation: TypedOperation<TType>
-): TypedOperation<TType> {
+export function createOperation<T extends Operation = Operation>(
+  operation: T
+): T {
   return operation;
 }
 
-export type OperationState =
-  | 'created'
-  | 'validating'
-  | 'waiting-for-confirmation'
-  | 'ready'
-  | 'executing'
-  | 'succeeded'
-  | 'failed'
-  | 'cancelled';
-
 export interface OperationRecord {
   operation: Operation;
-  state: OperationState;
+  state:
+    | 'created'
+    | 'validating'
+    | 'waiting-for-confirmation'
+    | 'ready'
+    | 'executing'
+    | 'succeeded'
+    | 'failed'
+    | 'cancelled';
   result?: OperationResult;
   durationMs?: number;
 }
 
-export interface OperationGroup {
-  id: OperationGroupId;
-  name: string;
-  operationIds: OperationId[];
-  profileId?: ProfileId;
-  repositoryId?: RepositoryId;
-  createdAt: ISODateTime;
+export interface OperationValidationResult {
+  valid: boolean;
+  errors: { code: string; message: string }[];
+  warnings: OperationWarning[];
+  confirmationRequired?: boolean;
+  confirmationReason?: string;
+  confirmationWarning?: string;
+}
+
+export interface OperationManager {
+  execute<T>(operation: Operation): Promise<OperationResult<T>>;
+  validate(operation: Operation): Promise<OperationValidationResult>;
+  cancel(operationId: OperationId): Promise<void>;
+  getHistory(): Operation[];
 }

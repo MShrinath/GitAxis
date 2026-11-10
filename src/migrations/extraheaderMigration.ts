@@ -5,7 +5,9 @@ import { logger } from '../utils/logger';
 let vscodeModule: any;
 try {
   vscodeModule = require('vscode');
-} catch {}
+} catch (requireErr) {
+  logger.debug(`vscode module unavailable in current environment: ${String(requireErr)}`);
+}
 
 export type IMigrationMemento = IMemento;
 
@@ -86,7 +88,9 @@ export class ExtraheaderMigration {
             await gitClient.unsetLocalConfig(repoPath, 'http.extraheader');
             foundAny = true;
           }
-        } catch {}
+        } catch (configErr) {
+          logger.debug(`No general http.extraheader found on ${repoPath}: ${String(configErr)}`);
+        }
 
         migratedRepos.add(repoPath);
 

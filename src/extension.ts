@@ -3,6 +3,7 @@ import { SecretStore } from './auth/secretStore';
 import { PersistentProfileStore } from './profiles/profileStore';
 import { GitClient } from './git/gitClient';
 import { AuthManager } from './auth/authManager';
+import { CredentialManagerAuth } from './auth/credentialManagerAuth';
 import { ProfileManager } from './profiles/profileManager';
 import { RepositoryDiscovery } from './discovery/repositoryDiscovery';
 import { SystemDiscovery } from './discovery/systemDiscovery';
@@ -13,6 +14,7 @@ import { registerGitHubCommands } from './commands/github';
 import { ExtraheaderMigration } from './migrations/extraheaderMigration';
 import { AccountVerifier } from './auth/accountVerifier';
 import { GitRepository } from './contracts';
+import { classifyProfile } from './profiles/profileMatcher';
 import { logger } from './utils/logger';
 import { getWorkspaceRepoPath } from './utils/workspace';
 
@@ -28,7 +30,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const secretStore = new SecretStore(context.secrets);
   const profileStore = new PersistentProfileStore(context.globalState);
   const gitClient = new GitClient('git');
-  const authManager = new AuthManager(secretStore);
+  const authManager = new AuthManager(secretStore, undefined, undefined, new CredentialManagerAuth(gitClient));
   const profileManager = new ProfileManager(profileStore, authManager, gitClient);
   const repoDiscovery = new RepositoryDiscovery(gitClient);
   const systemDiscovery = new SystemDiscovery(gitClient);
@@ -127,7 +129,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
           branchName = repo.currentBranch;
           repoEmail = (await gitClient.getLocalConfig(repo.path, 'user.email')) || (await gitClient.getConfig(repo.path, 'user.email'));
         }
-      } catch {}
+      } catch (err) {
+        logger.debug(`Failed to detect repository or config at ${currentPath}: ${String(err)}`);
+      }
     }
 
     let active: any | undefined;
@@ -149,9 +153,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         active.git.email !== undefined &&
         repoEmail.trim().toLowerCase() !== active.git.email.trim().toLowerCase();
 
-      const isWork = active.name.toLowerCase().includes('work') || active.git.email.toLowerCase().includes('work');
-      const isPersonal = active.name.toLowerCase().includes('personal') || active.git.email.toLowerCase().includes('personal');
-      const profileIcon = isWork ? '$(briefcase)' : isPersonal ? '$(person)' : '$(account)';
+      const { icon: profileIcon } = classifyProfile(active);
 
       if (emailMismatch) {
         statusBarItem.text = branchName

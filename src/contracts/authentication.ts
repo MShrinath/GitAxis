@@ -1,5 +1,3 @@
-import { ProfileId } from './common';
-
 export type AuthenticationType =
   | 'github-cli'
   | 'credential-manager'
@@ -8,42 +6,20 @@ export type AuthenticationType =
   | 'ssh'
   | 'none';
 
-export type AuthenticationSource =
-  | 'github-cli'
-  | 'git-credential-manager'
-  | 'vs-code-secret-storage'
-  | 'user-input'
-  | 'system'
-  | 'unknown';
-
-export interface SecretReference {
-  provider: 'vscode-secret-storage';
-  key: string;
-}
-
 export interface AuthenticationConfig {
   type: AuthenticationType;
-  secretRef?: SecretReference;
-  source?: AuthenticationSource;
+  secretRef?: {
+    provider: 'vscode-secret-storage';
+    key: string;
+  };
+  source?: string;
   sshKeyPath?: string;
 }
 
 export interface AuthenticationConfigInput {
   type: AuthenticationType;
-  source?: AuthenticationSource;
+  source?: string;
   sshKeyPath?: string;
-}
-
-export type SecretType =
-  | 'github-token'
-  | 'oauth-access-token'
-  | 'oauth-refresh-token'
-  | 'ssh-passphrase';
-
-export interface SaveProfileSecretInput {
-  profileId: ProfileId;
-  secretType: SecretType;
-  value: string;
 }
 
 /**

@@ -4,10 +4,7 @@ export class ConfirmationHandler {
   private promptFn: ConfirmationPromptFn;
 
   constructor(promptFn?: ConfirmationPromptFn) {
-    this.promptFn = promptFn ?? (async (message: string, detail?: string) => {
-      // Default fallback in non-VS Code environments (e.g. tests)
-      return true;
-    });
+    this.promptFn = promptFn ?? (async () => true);
   }
 
   public setPromptFn(fn: ConfirmationPromptFn): void {

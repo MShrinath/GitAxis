@@ -1,10 +1,16 @@
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { RepositoryParser } from './repository';
-import { BranchInfo, BranchParser } from './branch';
-import { CommitInfo, CommitParser } from './commit';
-import { StashEntry, StashParser } from './stash';
-import { TagInfo, TagParser } from './tag';
+import {
+  BranchInfo,
+  BranchParser,
+  CommitInfo,
+  CommitParser,
+  StashEntry,
+  StashParser,
+  TagInfo,
+  TagParser,
+} from './gitParsers';
 import { GitRemote, RepositoryStatus } from '../contracts';
 import { logger } from '../utils/logger';
 import { Validation } from '../utils/validation';
@@ -141,8 +147,32 @@ export class GitClient {
       const { stdout } = await this.exec(['config', '--get-urlmatch', 'credential.helper', url], { cwd });
       const trimmed = stdout.trim();
       if (trimmed) return trimmed;
-    } catch {}
+    } catch (err) {
+      logger.debug(`Could not resolve url-matched credential helper for ${url}: ${String(err)}`);
+    }
     return this.getCredentialHelper(cwd);
+  }
+
+  public async getGlobalCredentialHelpers(): Promise<string[]> {
+    try {
+      const { stdout } = await this.exec(['config', '--global', '--get-all', 'credential.helper']);
+      const helpers: string[] = [];
+      for (const line of stdout.split('\n')) {
+        const trimmed = line.trim();
+        if (trimmed && !helpers.includes(trimmed)) {
+          helpers.push(trimmed);
+        }
+      }
+      return helpers;
+    } catch (err) {
+      logger.debug(`Could not resolve global credential helpers: ${String(err)}`);
+      return [];
+    }
+  }
+
+  public static isGitCredentialManager(helper: string): boolean {
+    const lower = helper.toLowerCase();
+    return lower.includes('manager') || lower.includes('gcm');
   }
 
   public async getSystemCredentialHelper(): Promise<string> {
@@ -152,17 +182,20 @@ export class GitClient {
       if (h && !h.includes('gh') && !h.includes('store')) {
         return h;
       }
-    } catch {}
+    } catch (err) {
+      logger.debug(`Could not resolve system credential helper: ${String(err)}`);
+    }
 
     try {
-      const { stdout } = await this.exec(['config', '--global', '--get-all', 'credential.helper']);
-      for (const line of stdout.split('\n')) {
-        const h = line.trim();
-        if (h && !h.includes('gh') && !h.includes('store')) {
+      const helpers = await this.getGlobalCredentialHelpers();
+      for (const h of helpers) {
+        if (!h.includes('gh') && !h.includes('store')) {
           return h;
         }
       }
-    } catch {}
+    } catch (err) {
+      logger.debug(`Could not resolve global credential helper in fallback: ${String(err)}`);
+    }
 
     if (Platform.isWindows()) {
       return 'manager';
@@ -217,11 +250,25 @@ export class GitClient {
     return stdout;
   }
 
+  public async resolveRepositoryRoot(repoPath?: string): Promise<string | undefined> {
+    if (!repoPath) return undefined;
+    try {
+      if (await this.isRepository(repoPath)) {
+        return await this.getRoot(repoPath);
+      }
+    } catch (err) {
+      logger.debug(`Could not resolve repo root for ${repoPath}: ${String(err)}`);
+    }
+    return undefined;
+  }
+
   public async getCurrentBranch(repoPath: string): Promise<string> {
     try {
       const { stdout } = await this.exec(['branch', '--show-current'], { cwd: repoPath });
       if (stdout) return stdout;
-    } catch {}
+    } catch (err) {
+      logger.debug(`Could not get current branch name via branch command: ${String(err)}`);
+    }
 
     try {
       const { stdout } = await this.exec(['rev-parse', '--abbrev-ref', 'HEAD'], { cwd: repoPath });

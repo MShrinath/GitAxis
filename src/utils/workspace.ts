@@ -29,23 +29,16 @@ export async function getActiveWorkspaceRepoPath(
     const folder = vscode.workspace.getWorkspaceFolder(activeUri);
     if (folder) {
       if (gitClient) {
-        try {
-          if (await gitClient.isRepository(folder.uri.fsPath)) {
-            return await gitClient.getRoot(folder.uri.fsPath);
-          }
-        } catch {}
+        const root = await gitClient.resolveRepositoryRoot(folder.uri.fsPath);
+        if (root) return root;
       }
       return folder.uri.fsPath;
     }
 
-    // Active document is outside workspace folders; inspect its directory
     if (gitClient) {
-      try {
-        const fileDir = path.dirname(activeUri.fsPath);
-        if (await gitClient.isRepository(fileDir)) {
-          return await gitClient.getRoot(fileDir);
-        }
-      } catch {}
+      const fileDir = path.dirname(activeUri.fsPath);
+      const root = await gitClient.resolveRepositoryRoot(fileDir);
+      if (root) return root;
     }
     const workspaceFolders = vscode.workspace.workspaceFolders;
     if (!gitClient || !workspaceFolders || workspaceFolders.length === 0) {
@@ -63,14 +56,10 @@ export async function getActiveWorkspaceRepoPath(
     for (const folder of workspaceFolders) {
       const folderPath = folder.uri.fsPath;
       if (gitClient) {
-        try {
-          if (await gitClient.isRepository(folderPath)) {
-            const root = await gitClient.getRoot(folderPath);
-            if (!repoCandidates.some(c => c.root === root)) {
-              repoCandidates.push({ root, name: folder.name });
-            }
-          }
-        } catch {}
+        const root = await gitClient.resolveRepositoryRoot(folderPath);
+        if (root && !repoCandidates.some(c => c.root === root)) {
+          repoCandidates.push({ root, name: folder.name });
+        }
       } else {
         repoCandidates.push({ root: folderPath, name: folder.name });
       }
@@ -96,11 +85,8 @@ export async function getActiveWorkspaceRepoPath(
 
   const defaultFolder = workspaceFolders[0].uri.fsPath;
   if (defaultFolder && gitClient) {
-    try {
-      if (await gitClient.isRepository(defaultFolder)) {
-        return await gitClient.getRoot(defaultFolder);
-      }
-    } catch {}
+    const root = await gitClient.resolveRepositoryRoot(defaultFolder);
+    if (root) return root;
   }
 
   return defaultFolder;

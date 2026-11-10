@@ -502,7 +502,7 @@
 
         var badge = document.createElement('div');
         badge.className = msg.result.success ? 'badge badge-success' : 'badge badge-danger';
-        badge.textContent = (msg.result.success ? '✓ ' : '✗ ') + (msg.result.message || (msg.result.success ? 'Verified' : 'Verification failed'));
+        badge.textContent = msg.result.message || (msg.result.success ? 'Verified' : 'Verification failed');
         resBox.appendChild(badge);
 
         if (msg.result.success) {
@@ -557,14 +557,14 @@
         if (statusEl) {
           const missingRepo = msg.scopes && msg.scopes.length > 0 && !msg.scopes.includes('repo');
           if (missingRepo) {
-            statusEl.innerHTML = '<span class="status-unverified">✓ Verified @' + (msg.login || 'user') + ' (Warning: missing repo scope)</span>';
+            statusEl.innerHTML = '<span class="status-unverified">Verified @' + (msg.login || 'user') + ' (Warning: missing repo scope)</span>';
           } else {
-            statusEl.innerHTML = '<span class="status-verified">✓ Verified @' + (msg.login || 'user') + '</span>';
+            statusEl.innerHTML = '<span class="status-verified">Verified @' + (msg.login || 'user') + '</span>';
           }
         }
       } else {
         if (statusEl) {
-          statusEl.innerHTML = '<span class="status-unverified">✗ ' + (msg.message || 'Verification failed') + '</span>';
+          statusEl.innerHTML = '<span class="status-unverified">' + (msg.message || 'Verification failed') + '</span>';
         }
       }
     } else if (msg.command === 'testSshResult') {
@@ -594,11 +594,11 @@
           }
         }
         if (statusEl) {
-          statusEl.innerHTML = '<span class="status-verified">✓ ' + (msg.message || ('Authenticated as @' + msg.login)) + '</span>';
+          statusEl.innerHTML = '<span class="status-verified">' + (msg.message || ('Authenticated as @' + msg.login)) + '</span>';
         }
       } else {
         if (statusEl) {
-          statusEl.innerHTML = '<span class="status-unverified">✗ ' + (msg.message || 'SSH test failed') + '</span>';
+          statusEl.innerHTML = '<span class="status-unverified">' + (msg.message || 'SSH test failed') + '</span>';
         }
       }
     } else if (msg.command === 'profileDeleted') {

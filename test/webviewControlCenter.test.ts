@@ -773,5 +773,27 @@ describe('Webview Control Center Suite', () => {
       assert.strictEqual(created!.authentication.type, 'none');
       assert.strictEqual(created!.authentication.sshKeyPath, undefined);
     });
+
+    it('should save PAT token when authType is omitted but pat token is provided (inferred PAT)', async () => {
+      await messageListener!({
+        command: 'createProfileFromForm',
+        data: {
+          name: 'Inferred PAT Profile',
+          gitName: 'Inferred PAT User',
+          gitEmail: 'inferred-pat@example.com',
+          pat: 'ghp_inferred_token_777',
+          scope: 'local',
+        },
+      });
+
+      const successMsg = postedMessages.find(m => m.command === 'saveSuccess');
+      assert.ok(successMsg, 'Expected saveSuccess for inferred pat profile');
+
+      const created = await profileManager.getProfile(successMsg.profileId);
+      assert.ok(created);
+      assert.strictEqual(created!.authentication.type, 'pat');
+      const savedToken = await authManager.getPatAuth().getToken(created!.id);
+      assert.strictEqual(savedToken, 'ghp_inferred_token_777');
+    });
   });
 });

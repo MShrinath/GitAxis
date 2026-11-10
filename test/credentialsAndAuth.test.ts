@@ -7,6 +7,7 @@ import { PersistentProfileStore } from '../src/profiles/profileStore';
 import { ProfileManager } from '../src/profiles/profileManager';
 import { GitClient } from '../src/git/gitClient';
 import { GitHubCliAuth } from '../src/auth/githubCliAuth';
+import { CredentialManagerAuth } from '../src/auth/credentialManagerAuth';
 import { GitHubClient } from '../src/github/githubClient';
 import { AccountVerifier } from '../src/auth/accountVerifier';
 
@@ -46,6 +47,24 @@ describe('Credentials & Authentication Suite', () => {
       await authManager.clearAuthForProfile(profile.id);
       const resolvedAfterClear = await authManager.resolveAuthentication(profile);
       assert.strictEqual(resolvedAfterClear.credential, undefined);
+    });
+
+    it('should expose CredentialManagerAuth via getCredManagerAuth and detect helper status', async () => {
+      const cma = authManager.getCredManagerAuth();
+      assert.ok(cma);
+      assert.strictEqual(typeof cma.isConfigured, 'function');
+
+      const mockGitWithGCM = {
+        getGlobalCredentialHelpers: async () => ['manager'],
+      } as any;
+      const cmaWithGCM = new CredentialManagerAuth(mockGitWithGCM);
+      assert.strictEqual(await cmaWithGCM.isConfigured(), true);
+
+      const mockGitWithoutGCM = {
+        getGlobalCredentialHelpers: async () => ['cache --timeout=3600'],
+      } as any;
+      const cmaWithoutGCM = new CredentialManagerAuth(mockGitWithoutGCM);
+      assert.strictEqual(await cmaWithoutGCM.isConfigured(), false);
     });
   });
 
@@ -279,6 +298,62 @@ describe('Credentials & Authentication Suite', () => {
       const touchedNames = setRemoteCalls.map(c => c.name);
       assert.strictEqual(touchedNames.includes('ssh-remote'), false);
       assert.strictEqual(touchedNames.includes('gitlab'), false);
+    });
+
+    it('should colocate verified login sync in ProfileManager.syncVerifiedLogin', async () => {
+      const p = await profileManager.createProfile({
+        name: 'Needs Login Profile',
+        git: { name: 'Dev', email: 'dev@test.com', scope: 'local' },
+        authentication: { type: 'pat' },
+      });
+
+      let changedCalls = 0;
+      const onProfileChanged = () => { changedCalls++; };
+
+      // No login or whitespace -> false
+      const resEmpty = await profileManager.syncVerifiedLogin(p, undefined, onProfileChanged);
+      assert.strictEqual(resEmpty, false);
+      assert.strictEqual(changedCalls, 0);
+
+      const resWhitespace = await profileManager.syncVerifiedLogin(p, '   ', onProfileChanged);
+      assert.strictEqual(resWhitespace, false);
+      assert.strictEqual(changedCalls, 0);
+
+      // Valid login -> persists username and triggers callback
+      const resOk = await profileManager.syncVerifiedLogin(p, 'octocat', onProfileChanged);
+      assert.strictEqual(resOk, true);
+      assert.strictEqual(changedCalls, 1);
+      assert.strictEqual(p.github?.username, 'octocat');
+
+      const updated = await profileManager.getProfile(p.id);
+      assert.strictEqual(updated?.github?.username, 'octocat');
+
+      // Subsequent call when username already present -> returns false without re-updating
+      const resAlreadyPresent = await profileManager.syncVerifiedLogin(updated!, 'octocat2', onProfileChanged);
+      assert.strictEqual(resAlreadyPresent, false);
+      assert.strictEqual(changedCalls, 1);
+    });
+
+    it('should unset host config keys for both custom host and github.com', async () => {
+      const repoPath = 'C:/repos/enterprise-project';
+      localConfigs.set('credential.https://github.enterprise.com.username', 'entuser');
+      localConfigs.set('credential.https://github.com.username', 'oldghuser');
+      localConfigs.set('http.https://github.enterprise.com/.extraheader', 'hdr1');
+      localConfigs.set('http.https://github.com/.extraheader', 'hdr2');
+
+      const profile = await profileManager.createProfile({
+        name: 'Enterprise No-User',
+        git: { name: 'Ent Dev', email: 'ent@corp.com', scope: 'local' },
+        github: { host: 'github.enterprise.com', username: '' },
+        authentication: { type: 'none' },
+      });
+
+      await profileManager.switchProfile(profile.id, repoPath);
+
+      assert.strictEqual(localConfigs.has('credential.https://github.enterprise.com.username'), false);
+      assert.strictEqual(localConfigs.has('credential.https://github.com.username'), false);
+      assert.strictEqual(localConfigs.has('http.https://github.enterprise.com/.extraheader'), false);
+      assert.strictEqual(localConfigs.has('http.https://github.com/.extraheader'), false);
     });
 
     it('should handle non-git directory gracefully without throwing', async () => {

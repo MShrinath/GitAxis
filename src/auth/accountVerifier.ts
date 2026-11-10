@@ -394,7 +394,9 @@ export class AccountVerifier {
             };
           }
         }
-      } catch {}
+      } catch (helperErr) {
+        logger.debug(`Credential helper resolution attempt failed: ${String(helperErr)}`);
+      }
     }
 
     return {

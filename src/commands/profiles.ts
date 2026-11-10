@@ -37,19 +37,12 @@ export function registerProfileCommands(
   onProfileChanged?: () => void,
   accountVerifier?: AccountVerifier
 ): void {
-  // Helper: get current repository root
   const getCurrentRepoRoot = async (): Promise<string | undefined> => {
     const folder = getWorkspaceRepoPath();
     if (!folder) return undefined;
-    try {
-      if (await gitClient.isRepository(folder)) {
-        return await gitClient.getRoot(folder);
-      }
-    } catch {}
-    return folder;
+    return (await gitClient.resolveRepositoryRoot(folder)) || folder;
   };
 
-  // 1. Switch Profile
   context.subscriptions.push(
     vscode.commands.registerCommand('gitaxis.switchProfile', async (targetProfileId?: string) => {
       const profiles = await profileManager.getProfiles();
@@ -562,18 +555,7 @@ export function registerProfileCommands(
         async () => {
           const res = await accountVerifier.verifyProfile(profile, repoRoot, { onDemand: true });
           if (res.status === 'verified') {
-            if (!profile.github?.username && res.login) {
-              try {
-                await profileManager.updateProfile(profile.id, {
-                  github: {
-                    host: profile.github?.host || 'github.com',
-                    username: res.login,
-                    orgs: profile.github?.orgs,
-                  },
-                });
-                onProfileChanged?.();
-              } catch {}
-            }
+            await profileManager.syncVerifiedLogin(profile, res.login, onProfileChanged);
             let detail = res.message;
             if (res.scopes && res.scopes.length > 0) {
               detail += `\nScopes: ${res.scopes.join(', ')}`;
@@ -581,11 +563,11 @@ export function registerProfileCommands(
             if (res.expiration) {
               detail += `\nToken expires: ${res.expiration}`;
             }
-            vscode.window.showInformationMessage(`✓ Profile "${profile.name}" verified!\n${detail}`);
+            vscode.window.showInformationMessage(`Profile "${profile.name}" verified!\n${detail}`);
           } else if (res.status === 'not-verified') {
             vscode.window.showWarningMessage(`Profile "${profile.name}" is not verified:\n${res.message}`);
           } else {
-            vscode.window.showWarningMessage(`✗ Verification failed for "${profile.name}":\n${res.message}`);
+            vscode.window.showWarningMessage(`Verification failed for "${profile.name}":\n${res.message}`);
           }
         }
       );

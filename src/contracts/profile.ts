@@ -3,23 +3,10 @@ import { AuthenticationConfig, AuthenticationConfigInput } from './authenticatio
 
 export type GitIdentityScope = 'local' | 'global';
 
-export interface GitIdentity {
-  name: string;
-  email: string;
-  scope: GitIdentityScope;
-}
-
 export interface GitIdentityInput {
   name: string;
   email: string;
   scope?: GitIdentityScope;
-}
-
-export interface GitHubIdentity {
-  host: string;
-  username: string;
-  accountId?: string;
-  orgs?: string[];
 }
 
 export interface GitHubIdentityInput {
@@ -28,27 +15,26 @@ export interface GitHubIdentityInput {
   orgs?: string[];
 }
 
-export type ProfileSource =
-  | 'manual'
-  | 'github-cli'
-  | 'credential-manager'
-  | 'imported'
-  | 'system-discovery';
-
-export interface ProfileMetadata {
-  source: ProfileSource;
-  imported?: boolean;
-  lastUsedAt?: ISODateTime;
-  description?: string;
-}
-
 export interface GitProfile {
   id: ProfileId;
   name: string;
-  git: GitIdentity;
-  github?: GitHubIdentity;
+  git: {
+    name: string;
+    email: string;
+    scope: GitIdentityScope;
+  };
+  github?: {
+    host: string;
+    username: string;
+    orgs?: string[];
+  };
   authentication: AuthenticationConfig;
-  metadata: ProfileMetadata;
+  metadata: {
+    source: string;
+    imported?: boolean;
+    lastUsedAt?: ISODateTime;
+    description?: string;
+  };
   createdAt: ISODateTime;
   updatedAt: ISODateTime;
   folderRules?: string[];
@@ -61,7 +47,7 @@ export interface CreateProfileInput {
   github?: GitHubIdentityInput;
   authentication: AuthenticationConfigInput;
   description?: string;
-  source?: ProfileSource;
+  source?: string;
   imported?: boolean;
   folderRules?: string[];
 }

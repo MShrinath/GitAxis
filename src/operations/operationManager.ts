@@ -17,6 +17,7 @@ import { ConfirmationHandler } from './confirmation';
 import { ProfileManager } from '../profiles/profileManager';
 import { GitClient, GitExecOptions } from '../git/gitClient';
 import { GitHubClient } from '../github/githubClient';
+import { getPrimaryRemote } from '../git/remote';
 import { logger } from '../utils/logger';
 import { Validation } from '../utils/validation';
 
@@ -304,7 +305,7 @@ export class OperationManager implements IOperationManager {
           try {
             const remotes = await this.gitClient.getRemotes(repoPath);
             const targetRemoteName = (operation.target as any).remoteName || (operation.input as any).remote || 'origin';
-            const targetRemote = remotes.find(r => r.name === targetRemoteName) || remotes[0];
+            const targetRemote = getPrimaryRemote(remotes, targetRemoteName);
 
             const effectiveOwner = targetRemote ? (targetRemote.pushOwner || targetRemote.owner) : undefined;
             if (targetRemote && effectiveOwner) {
@@ -433,7 +434,9 @@ export class OperationManager implements IOperationManager {
             try {
               await this.gitClient.exec(['rev-parse', '--verify', '@{u}'], { cwd: repoPath });
               hasUpstream = true;
-            } catch {}
+            } catch (upstreamErr) {
+              logger.debug(`No upstream tracking branch configured: ${String(upstreamErr)}`);
+            }
 
             if (hasUpstream) {
               const { stdout } = await this.gitClient.exec(['log', '@{u}..HEAD', '--oneline'], { cwd: repoPath }).catch(() => ({ stdout: '' }));
@@ -471,7 +474,9 @@ export class OperationManager implements IOperationManager {
         if (!branchName && repoPath) {
           try {
             branchName = await this.gitClient.getCurrentBranch(repoPath);
-          } catch {}
+          } catch (branchErr) {
+            logger.debug(`Could not resolve current branch for confirmation context: ${String(branchErr)}`);
+          }
         }
         const remoteName = (operation.input as any)?.remote || 'origin';
 

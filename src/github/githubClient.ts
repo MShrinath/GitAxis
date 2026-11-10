@@ -65,7 +65,9 @@ export class GitHubClient {
           try {
             const json = JSON.parse(errText);
             if (json.message) parsedMsg = json.message;
-          } catch {}
+          } catch (parseErr) {
+            logger.debug(`Response body was not JSON, retaining raw text: ${String(parseErr)}`);
+          }
 
           if (response.status === 401) {
             throw new Error(`GitHub API (401 Unauthorized): Bad credentials or expired token. ${parsedMsg}`);

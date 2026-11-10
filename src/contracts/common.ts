@@ -1,13 +1,7 @@
-export type UUID = string;
-
 export type ISODateTime = string;
 
-export type ProfileId = UUID;
+export type ProfileId = string;
 
-export type RepositoryId = UUID;
+export type RepositoryId = string;
 
-export type OperationId = UUID;
-
-export type OperationGroupId = UUID;
-
-export type Host = string;
+export type OperationId = string;

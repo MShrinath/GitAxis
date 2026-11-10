@@ -1,4 +1,5 @@
 import { GitProfile, GitRepository, ProfileMatchResult } from '../contracts';
+import { classifyProfile } from '../profiles/profileMatcher';
 
 export interface DiscoveredAccount {
   name: string;
@@ -127,8 +128,7 @@ export class HtmlBuilder {
     const profilesJson = JSON.stringify(sanitizedProfiles).replace(/</g, '\\u003c');
     const discoveredJson = JSON.stringify(discovered).replace(/</g, '\\u003c');
 
-    const isWork = profile ? (profile.name.toLowerCase().includes('work') || profile.git.email.toLowerCase().includes('work')) : false;
-    const isPersonal = profile ? (profile.name.toLowerCase().includes('personal') || profile.git.email.toLowerCase().includes('personal')) : false;
+    const classification = classifyProfile(profile);
 
     return `<!DOCTYPE html>
 <html lang="en">
@@ -160,7 +160,7 @@ export class HtmlBuilder {
           <span>${repo && profile ? `Active for this repo: <strong class="profile-title-name ${profile && (state.profileStatuses?.[profile.id]?.status === 'verified' || (!state.profileStatuses?.[profile.id]?.status && state.profileStatuses?.[profile.id]?.verified === true)) ? 'status-verified' : profile && state.profileStatuses?.[profile.id]?.status === 'not-verified' ? 'status-neutral' : profile && (state.profileStatuses?.[profile.id]?.status === 'failed' || state.profileStatuses?.[profile.id]?.verified === false) ? 'status-unverified' : ''}">${profileName}</strong> (${profileUser})` : `<span class="profile-title-name ${profile && (state.profileStatuses?.[profile.id]?.status === 'verified' || (!state.profileStatuses?.[profile.id]?.status && state.profileStatuses?.[profile.id]?.verified === true)) ? 'status-verified' : profile && state.profileStatuses?.[profile.id]?.status === 'not-verified' ? 'status-neutral' : profile && (state.profileStatuses?.[profile.id]?.status === 'failed' || state.profileStatuses?.[profile.id]?.verified === false) ? 'status-unverified' : ''}">${profileName}</span>`}</span>
         </div>
         <div>
-          ${profile ? `<span class="badge ${isWork ? 'badge-info' : 'badge-success'}">${isWork ? 'Work' : isPersonal ? 'Personal' : 'Active'}</span>` : ''}
+          ${profile ? `<span class="badge ${classification.badgeClass}">${classification.badgeLabel}</span>` : ''}
         </div>
       </div>
       <div class="meta-list">
@@ -209,7 +209,7 @@ export class HtmlBuilder {
       ? `<div class="section discovered-section">
     <div class="section-title-row">
       <span class="section-title">DISCOVERED ACCOUNTS (${discovered.length})</span>
-      <button type="button" class="icon-btn-ghost" title="Dismiss" data-action="dismissDiscovered">✕</button>
+      <button type="button" class="icon-btn-ghost" title="Dismiss" data-action="dismissDiscovered">&times;</button>
     </div>
     <div class="discovered-deck">
       <button type="button" class="btn btn-sm btn-primary" data-action="importAllDiscoveredAccounts" style="margin-bottom: 8px; width: 100%;">
@@ -307,7 +307,7 @@ export class HtmlBuilder {
   <div class="section form-section-noborder hidden" id="profile-form-section" style="display: none;">
     <div class="section-title-row">
       <span class="section-title" id="form-title">CREATE / EDIT PROFILE</span>
-      <button type="button" class="icon-btn-ghost" title="Close" data-action="cancelProfileForm">✕</button>
+      <button type="button" class="icon-btn-ghost" title="Close" data-action="cancelProfileForm">&times;</button>
     </div>
     <div class="form-box">
       <div id="form-error-msg" class="banner-error hidden"></div>

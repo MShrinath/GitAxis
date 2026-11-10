@@ -76,22 +76,81 @@ export class ProfileManager {
     return updated;
   }
 
+  private async unsetHostConfigKey(
+    host: string,
+    keyFactory: (h: string) => string,
+    targetPath?: string
+  ): Promise<void> {
+    const key = keyFactory(host);
+    if (targetPath) {
+      await this.gitClient.unsetLocalConfig(targetPath, key);
+    } else {
+      await this.gitClient.unsetGlobalConfig(key);
+    }
+    if (host.toLowerCase() !== 'github.com') {
+      const defaultKey = keyFactory('github.com');
+      if (targetPath) {
+        await this.gitClient.unsetLocalConfig(targetPath, defaultKey);
+      } else {
+        await this.gitClient.unsetGlobalConfig(defaultKey);
+      }
+    }
+  }
+
+  private async rejectPatCredential(profile: GitProfile, repoPath?: string): Promise<void> {
+    if (profile.authentication?.type !== 'pat') return;
+    try {
+      const host = Platform.normalizeGitHubHost(profile.github?.host);
+      const username = profile.github?.username?.trim() || (profile.git.name && /^[a-zA-Z0-9_.-]+$/.test(profile.git.name) ? profile.git.name : undefined);
+      if (username) {
+        await this.gitClient.rejectCredential({ protocol: 'https', host, username }, repoPath ? { cwd: repoPath } : undefined);
+      }
+    } catch (err) {
+      logger.warn(`Failed to reject credential for profile "${profile.name}": ${String(err)}`);
+    }
+  }
+
   public async deleteProfile(id: ProfileId): Promise<void> {
     const profile = await this.store.get(id);
-    if (profile && profile.authentication?.type === 'pat') {
-      try {
-        const host = Platform.normalizeGitHubHost(profile.github?.host);
-        const username = profile.github?.username?.trim() || (profile.git.name && /^[a-zA-Z0-9_.-]+$/.test(profile.git.name) ? profile.git.name : undefined);
-        if (username) {
-          await this.gitClient.rejectCredential({ protocol: 'https', host, username });
-        }
-      } catch (err) {
-        logger.warn(`Failed to reject credential on delete for profile "${profile.name}": ${String(err)}`);
-      }
+    if (profile) {
+      await this.rejectPatCredential(profile);
     }
     await this.authManager.clearAuthForProfile(id);
     await this.store.delete(id);
     logger.info(`Profile deleted: ${id}`);
+  }
+
+  public async syncVerifiedLogin(
+    profile: GitProfile,
+    login?: string,
+    onProfileChanged?: () => void
+  ): Promise<boolean> {
+    const cleanLogin = login?.trim();
+    if (!cleanLogin || profile.github?.username) {
+      return false;
+    }
+    try {
+      await this.updateProfile(profile.id, {
+        github: {
+          host: profile.github?.host || 'github.com',
+          username: cleanLogin,
+          orgs: profile.github?.orgs,
+        },
+      });
+      if (!profile.github) {
+        profile.github = {
+          host: 'github.com',
+          username: cleanLogin,
+        };
+      } else {
+        profile.github.username = cleanLogin;
+      }
+      onProfileChanged?.();
+      return true;
+    } catch (err) {
+      logger.warn(`Failed to auto-update profile "${profile.name}" with verified GitHub username: ${String(err)}`);
+      return false;
+    }
   }
 
   public getAuthManager(): AuthManager {
@@ -108,29 +167,13 @@ export class ProfileManager {
       throw new Error(`Profile with id "${id}" does not exist`);
     }
 
-    let repoRoot = repositoryPath;
-    if (repositoryPath) {
-      try {
-        if (await this.gitClient.isRepository(repositoryPath)) {
-          repoRoot = await this.gitClient.getRoot(repositoryPath);
-        }
-      } catch {}
-    }
+    const repoRoot = (await this.gitClient.resolveRepositoryRoot(repositoryPath)) || repositoryPath;
 
     const current = await this.store.getActive();
-    if (current && current.id !== id && current.authentication?.type === 'pat') {
-      try {
-        const host = Platform.normalizeGitHubHost(current.github?.host);
-        const username = current.github?.username?.trim() || (current.git.name && /^[a-zA-Z0-9_.-]+$/.test(current.git.name) ? current.git.name : undefined);
-        if (username) {
-          await this.gitClient.rejectCredential({ protocol: 'https', host, username }, { cwd: repoRoot });
-        }
-      } catch (err) {
-        logger.warn(`Failed to reject previous profile credential: ${String(err)}`);
-      }
+    if (current && current.id !== id) {
+      await this.rejectPatCredential(current, repoRoot);
     }
 
-    // Apply identity first (atomic)
     if (repoRoot || profile.git.scope === 'global') {
       const applied = await this.applyIdentityToRepository(profile, repoRoot, confirmGlobalChange);
       if (applied === false) {
@@ -138,7 +181,6 @@ export class ProfileManager {
       }
     }
 
-    // If repository path was provided, associate this repo with the profile so switching applies to current repo
     if (repoRoot) {
       await this.store.setAssociation(repoRoot, id);
     }
@@ -155,19 +197,9 @@ export class ProfileManager {
     confirmGlobalChange?: () => Promise<boolean>
   ): Promise<boolean> {
     try {
-      // 1. Resolve targetPath and check if repositoryPath points to a valid git repository
-      let isRepo = false;
-      let targetPath = repositoryPath;
-      if (repositoryPath) {
-        try {
-          isRepo = await this.gitClient.isRepository(repositoryPath);
-          if (isRepo) {
-            targetPath = await this.gitClient.getRoot(repositoryPath);
-          }
-        } catch {
-          isRepo = false;
-        }
-      }
+      const repoRoot = await this.gitClient.resolveRepositoryRoot(repositoryPath);
+      const isRepo = Boolean(repoRoot);
+      const targetPath = repoRoot || repositoryPath;
 
       // 2. Apply Git author name and email
       if (profile.git.scope === 'global') {
@@ -202,26 +234,16 @@ export class ProfileManager {
         }
       } else {
         if (isRepo && targetPath) {
-          await this.gitClient.unsetLocalConfig(targetPath, credentialKey);
-          if (host.toLowerCase() !== 'github.com') {
-            await this.gitClient.unsetLocalConfig(targetPath, 'credential.https://github.com.username');
-          }
+          await this.unsetHostConfigKey(host, h => `credential.https://${h}.username`, targetPath);
         }
         if (profile.git.scope === 'global') {
-          await this.gitClient.unsetGlobalConfig(credentialKey);
-          if (host.toLowerCase() !== 'github.com') {
-            await this.gitClient.unsetGlobalConfig('credential.https://github.com.username');
-          }
+          await this.unsetHostConfigKey(host, h => `credential.https://${h}.username`);
         }
       }
 
       // 4. PAT Token Authentication: Do NOT persist PATs to .git/config (Section 1). Ensure any leftover extraheaders are cleanly removed. Credentials are provided per-command in memory.
       if (isRepo && targetPath) {
-        const extraHeaderKey = `http.https://${host}/.extraheader`;
-        await this.gitClient.unsetLocalConfig(targetPath, extraHeaderKey);
-        if (host.toLowerCase() !== 'github.com') {
-          await this.gitClient.unsetLocalConfig(targetPath, 'http.https://github.com/.extraheader');
-        }
+        await this.unsetHostConfigKey(host, h => `http.https://${h}/.extraheader`, targetPath);
         await this.gitClient.unsetLocalConfig(targetPath, 'http.extraheader');
         logger.info(`Cleaned any persistent PAT extraheaders on ${targetPath}`);
       }
@@ -266,14 +288,10 @@ export class ProfileManager {
         }
       } else if (isRepo && targetPath) {
         try {
-          const localHelper = await this.gitClient.getLocalConfig(targetPath, `credential.https://${host}.helper`);
-          if (localHelper) {
-            await this.gitClient.unsetLocalConfig(targetPath, `credential.https://${host}.helper`);
-            if (host.toLowerCase() !== 'github.com') {
-              await this.gitClient.unsetLocalConfig(targetPath, 'credential.https://github.com.helper');
-            }
-          }
-        } catch {}
+          await this.unsetHostConfigKey(host, h => `credential.https://${h}.helper`, targetPath);
+        } catch (err) {
+          logger.debug(`Could not unset local credential helper on ${targetPath}: ${String(err)}`);
+        }
       }
 
       // 5. SSH Key Alignment: If the profile authentication is SSH with an sshKeyPath, set core.sshCommand to use that key; unset it if switching to a non-SSH profile.
@@ -326,7 +344,9 @@ export class ProfileManager {
                 if (u.port && !host.includes(':')) {
                   hostWithPort = `${u.hostname}:${u.port}`;
                 }
-              } catch {}
+              } catch (err) {
+                logger.debug(`Could not parse custom port from ${sampleUrl}: ${String(err)}`);
+              }
 
               if (owner && cleanRepo) {
                 const userPrefix = effectiveUsername ? `${effectiveUsername}@` : '';
@@ -389,14 +409,8 @@ export class ProfileManager {
     const profiles = await this.store.list();
     if (profiles.length === 0) return undefined;
 
-    let targetPath = repositoryPath;
-    try {
-      if (await this.gitClient.isRepository(repositoryPath)) {
-        targetPath = await this.gitClient.getRoot(repositoryPath);
-      }
-    } catch {}
+    const targetPath = (await this.gitClient.resolveRepositoryRoot(repositoryPath)) || repositoryPath;
 
-    // 1. Explicit binding
     const boundId = await this.store.getAssociation(targetPath);
     if (boundId) {
       const bound = profiles.find(p => p.id === boundId);
@@ -405,15 +419,15 @@ export class ProfileManager {
       }
     }
 
-    // Resolve remotes early so folder and remote rules can match them
     let remotes = options?.remotes;
     if (!remotes) {
       try {
         remotes = await this.gitClient.getRemotes(targetPath);
-      } catch {}
+      } catch (err) {
+        logger.debug(`Could not retrieve remotes for ${targetPath}: ${String(err)}`);
+      }
     }
 
-    // 2. Folder rule & remote rule (includeIf / folder path & remote URL pattern matching)
     const folderMatch = this.folderRuleManager.resolveProfile(targetPath, profiles, remotes);
     if (folderMatch) {
       return {
@@ -425,19 +439,21 @@ export class ProfileManager {
       };
     }
 
-    // 3. Matcher (remote owner, host, email, name)
-
     let localGitEmail = options?.localGitEmail;
     let localGitName = options?.localGitName;
     if (!localGitEmail) {
       try {
         localGitEmail = (await this.gitClient.getLocalConfig(targetPath, 'user.email')) || (await this.gitClient.getConfig(targetPath, 'user.email'));
-      } catch {}
+      } catch (err) {
+        logger.debug(`Could not retrieve local email for ${targetPath}: ${String(err)}`);
+      }
     }
     if (!localGitName) {
       try {
         localGitName = (await this.gitClient.getLocalConfig(targetPath, 'user.name')) || (await this.gitClient.getConfig(targetPath, 'user.name'));
-      } catch {}
+      } catch (err) {
+        logger.debug(`Could not retrieve local name for ${targetPath}: ${String(err)}`);
+      }
     }
 
     const matchResult = await this.matcher.match({

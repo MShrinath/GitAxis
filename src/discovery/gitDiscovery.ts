@@ -21,15 +21,7 @@ export class GitDiscovery {
     const userName = await this.gitClient.getGlobalConfig('user.name');
     const userEmail = await this.gitClient.getGlobalConfig('user.email');
     const defaultBranch = await this.gitClient.getGlobalConfig('init.defaultBranch');
-
-    let credentialHelpers: string[] = [];
-    try {
-      const { stdout } = await this.gitClient.exec(['config', '--global', '--get-all', 'credential.helper']);
-      credentialHelpers = stdout
-        .split('\n')
-        .map(h => h.trim())
-        .filter(h => h.length > 0);
-    } catch {}
+    const credentialHelpers = await this.gitClient.getGlobalCredentialHelpers();
 
     return {
       userName,

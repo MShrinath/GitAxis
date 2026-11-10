@@ -33,6 +33,10 @@ export class AuthManager {
     return this.ghCliAuth;
   }
 
+  public getCredManagerAuth(): CredentialManagerAuth {
+    return this.credManagerAuth;
+  }
+
   public async resolveAuthentication(profile: GitProfile): Promise<ResolvedAuthentication> {
     const authType = profile.authentication.type;
     const username = profile.github?.username || profile.git.name;

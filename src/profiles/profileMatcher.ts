@@ -8,6 +8,44 @@ import {
 } from '../contracts';
 import { PersistentProfileStore } from './profileStore';
 
+export type ProfileCategory = 'work' | 'personal' | 'active';
+
+export interface ProfileClassification {
+  category: ProfileCategory;
+  isWork: boolean;
+  isPersonal: boolean;
+  icon: string;
+  badgeLabel: string;
+  badgeClass: string;
+}
+
+export function classifyProfile(profile?: { name: string; git?: { email?: string } } | null): ProfileClassification {
+  if (!profile) {
+    return {
+      category: 'active',
+      isWork: false,
+      isPersonal: false,
+      icon: '$(account)',
+      badgeLabel: 'Active',
+      badgeClass: 'badge-success',
+    };
+  }
+  const name = (profile.name || '').toLowerCase();
+  const email = (profile.git?.email || '').toLowerCase();
+  const isWork = name.includes('work') || email.includes('work');
+  const isPersonal = name.includes('personal') || email.includes('personal');
+  const category: ProfileCategory = isWork ? 'work' : isPersonal ? 'personal' : 'active';
+
+  return {
+    category,
+    isWork,
+    isPersonal,
+    icon: isWork ? '$(briefcase)' : isPersonal ? '$(person)' : '$(account)',
+    badgeLabel: isWork ? 'Work' : isPersonal ? 'Personal' : 'Active',
+    badgeClass: isWork ? 'badge-info' : 'badge-success',
+  };
+}
+
 export interface MatchContext {
   repositoryPath?: string;
   remotes?: GitRemote[];
@@ -28,7 +66,6 @@ export class ProfileMatcher {
       };
     }
 
-    // 1. Check explicit repository association first
     if (context.repositoryPath) {
       const associatedId = await this.profileStore.getAssociation(context.repositoryPath);
       if (associatedId) {
@@ -55,7 +92,6 @@ export class ProfileMatcher {
       let score = 0;
       const reasons: ProfileMatchReason[] = [];
 
-      // Check remote matches
       if (context.remotes && context.remotes.length > 0) {
         let bestRemoteScore = 0;
         let bestRemoteReasons: ProfileMatchReason[] = [];
@@ -70,7 +106,6 @@ export class ProfileMatcher {
           let currentRemoteScore = 0;
           const currentRemoteReasons: ProfileMatchReason[] = [];
 
-          // Check remote host vs profile github host
           const effectiveHost = remote.pushHost || remote.host;
           if (profile.github?.host && effectiveHost) {
             if (profile.github.host.toLowerCase() === effectiveHost.toLowerCase()) {
@@ -79,7 +114,6 @@ export class ProfileMatcher {
             }
           }
 
-          // Check remote owner vs profile github username and allowed orgs
           const effectiveOwner = remote.pushOwner || remote.owner;
           if (effectiveOwner) {
             const lowerRemote = effectiveOwner.toLowerCase();
@@ -125,7 +159,6 @@ export class ProfileMatcher {
         }
       }
 
-      // Check local git config matches
       if (context.localGitEmail && profile.git.email) {
         if (context.localGitEmail.toLowerCase() === profile.git.email.toLowerCase()) {
           score += 25;
@@ -149,7 +182,6 @@ export class ProfileMatcher {
       }
     }
 
-    // Sort matches descending by score
     matches.sort((a, b) => b.score - a.score);
 
     if (matches.length === 0) {

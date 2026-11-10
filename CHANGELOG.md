@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.14.4] - 2026-11-11
+
+### Fixed & Hardened
+- **Inferred PAT Form Preservation**: Corrected profile creation and update flow in the sidebar to persist Personal Access Tokens even when the authentication dropdown is left unselected.
+- **Enterprise Host Helper Cleanup**: Generalized credential helper unsetting during profile switches to cleanly clear helper configurations across custom enterprise domains and github.com.
+
+### Refactored & Optimized
+- **Contracts and Parsers Consolidation**: Pruned obsolete speculative operations contracts and unified git branch, commit, stash, and tag parsers into a consolidated parser module with zero behavior changes.
+- **Diagnostic Precision**: Replaced silent error swallows across repository discovery and configuration routines with explicit debug logging.
+
+---
+
 ## [0.14.3] - 2026-11-10
 
 ### Changed & Cleaned

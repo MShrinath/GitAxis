@@ -48,7 +48,9 @@ export class FolderRuleManager {
         const content = fs.readFileSync(this.gitConfigPath, 'utf8');
         return content.includes(GITAXIS_CONFIG_START);
       }
-    } catch {}
+    } catch (readErr) {
+      logger.debug(`Could not read git config at ${this.gitConfigPath}: ${String(readErr)}`);
+    }
     return false;
   }
 
@@ -476,7 +478,11 @@ export class FolderRuleManager {
       }
     } catch {
       await fs.promises.writeFile(targetPath, content, 'utf8');
-      try { await fs.promises.unlink(tempPath); } catch {}
+      try {
+        await fs.promises.unlink(tempPath);
+      } catch (unlinkErr) {
+        logger.debug(`Could not remove temp file ${tempPath}: ${String(unlinkErr)}`);
+      }
     }
   }
 }

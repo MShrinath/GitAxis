@@ -4,12 +4,13 @@ import { DiscoveredAccount, HtmlBuilder, WebviewState } from './html';
 import { ProfileManager } from '../profiles/profileManager';
 import { RepositoryDiscovery } from '../discovery/repositoryDiscovery';
 import { SystemDiscovery } from '../discovery/systemDiscovery';
-import { AuthenticationConfigInput, CreateProfileInput, GitProfile, GitRepository, ProfileMatchResult, UpdateProfileInput } from '../contracts';
+import { AuthenticationConfigInput, CreateProfileInput, GitIdentityInput, GitHubIdentityInput, GitProfile, GitRepository, ProfileMatchResult, UpdateProfileInput } from '../contracts';
 import { Platform } from '../utils/platform';
 import { Validation } from '../utils/validation';
 import { logger } from '../utils/logger';
 import { AccountVerifier } from '../auth/accountVerifier';
 import { confirmGlobalGitChange, getWorkspaceRepoPath } from '../utils/workspace';
+import { getPrimaryRemote, getRemoteWebUrl } from '../git/remote';
 
 const ALLOWED_COMMANDS = new Set([
   'refresh',
@@ -94,68 +95,21 @@ export class SidebarViewProvider implements vscode.WebviewViewProvider {
 
           case 'createProfileFromForm': {
             const data = message.data;
-            const valError = this.validateProfileFormData(data);
-            if (valError) {
-              this.postSaveError(valError);
+            const parsed = await this.parseAndValidateProfileForm(data);
+            if (parsed.error) {
+              this.postSaveError(parsed.error);
               break;
-            }
-
-            const rawSshKey = typeof data.sshKeyPath === 'string' ? data.sshKeyPath.trim() : undefined;
-            const isSsh = data.authType === 'ssh' || (!data.authType && Boolean(rawSshKey));
-            if (isSsh && rawSshKey && !Validation.isValidSshKeyPath(rawSshKey)) {
-              this.postSaveError(`Invalid SSH key path: "${data.sshKeyPath}". Path contains invalid characters or command flags.`);
-              break;
-            }
-
-            const baseFields = this.toProfileGitFields(data);
-            let gh = this.extractGitHubIdentity(data);
-            const patVal = typeof data.pat === 'string' ? data.pat.trim() : undefined;
-
-            if (!gh && this.accountVerifier) {
-              try {
-                const host = typeof data.host === 'string' && data.host.trim() ? data.host.trim() : 'github.com';
-                if (data.authType === 'pat' && patVal) {
-                  const res = await this.accountVerifier.verifyPatToken(patVal, host);
-                  if (res.success && res.login) {
-                    gh = { host, username: res.login };
-                  }
-                } else if (isSsh) {
-                  const res = await this.accountVerifier.verifySshKey(rawSshKey, host);
-                  if (res.success && res.login) {
-                    gh = { host, username: res.login };
-                  }
-                }
-              } catch {}
-            }
-
-            let authConfig: AuthenticationConfigInput;
-            if (isSsh) {
-              authConfig = {
-                type: 'ssh',
-                source: 'user-input',
-                sshKeyPath: rawSshKey || undefined,
-              };
-            } else if (data.authType === 'pat' || (!data.authType && patVal && patVal.length > 0)) {
-              authConfig = {
-                type: 'pat',
-                source: 'vs-code-secret-storage',
-              };
-            } else {
-              authConfig = {
-                type: 'none',
-                source: 'user-input',
-              };
             }
 
             const input: CreateProfileInput = {
-              ...baseFields,
-              github: gh,
-              authentication: authConfig,
+              ...parsed.baseFields!,
+              github: parsed.gh,
+              authentication: parsed.authConfig!,
               source: 'manual',
               imported: false,
             };
 
-            const created = await this.profileManager.createProfile(input, !isSsh && data.authType === 'pat' && patVal ? patVal : undefined);
+            const created = await this.profileManager.createProfile(input, parsed.secretToken);
             await this.applyProfileIfActive(created);
             this.view?.webview.postMessage({ command: 'saveSuccess', profileId: created.id });
             vscode.window.showInformationMessage(`Profile "${created.name}" created successfully!`);
@@ -170,18 +124,6 @@ export class SidebarViewProvider implements vscode.WebviewViewProvider {
               this.postSaveError('Profile ID is required.');
               break;
             }
-            const valError = this.validateProfileFormData(data);
-            if (valError) {
-              this.postSaveError(valError);
-              break;
-            }
-
-            const rawSshKey = typeof data.sshKeyPath === 'string' ? data.sshKeyPath.trim() : undefined;
-            const isSsh = data.authType === 'ssh' || (!data.authType && Boolean(rawSshKey));
-            if (isSsh && rawSshKey && !Validation.isValidSshKeyPath(rawSshKey)) {
-              this.postSaveError(`Invalid SSH key path: "${data.sshKeyPath}". Path contains invalid characters or command flags.`);
-              break;
-            }
 
             const existingProfile = await this.profileManager.getProfile(data.id);
             if (!existingProfile) {
@@ -189,63 +131,25 @@ export class SidebarViewProvider implements vscode.WebviewViewProvider {
               break;
             }
 
-            const baseFields = this.toProfileGitFields(data);
-            let gh = this.extractGitHubIdentity(data);
-            const patVal = typeof data.pat === 'string' ? data.pat.trim() : undefined;
-
-            if (!gh && this.accountVerifier) {
-              try {
-                const host = typeof data.host === 'string' && data.host.trim() ? data.host.trim() : 'github.com';
-                if (data.authType === 'pat') {
-                  const tokenToVerify = patVal || (await this.profileManager.getAuthManager().getPatAuth().getToken(existingProfile.id));
-                  if (tokenToVerify) {
-                    const res = await this.accountVerifier.verifyPatToken(tokenToVerify, host);
-                    if (res.success && res.login) {
-                      gh = { host, username: res.login };
-                    }
-                  }
-                } else if (isSsh) {
-                  const res = await this.accountVerifier.verifySshKey(rawSshKey, host);
-                  if (res.success && res.login) {
-                    gh = { host, username: res.login };
-                  }
-                }
-              } catch {}
+            const parsed = await this.parseAndValidateProfileForm(data, existingProfile);
+            if (parsed.error) {
+              this.postSaveError(parsed.error);
+              break;
             }
 
             const input: UpdateProfileInput = {
-              ...baseFields,
-              github: gh
-                ? { ...gh, orgs: existingProfile.github?.orgs }
+              ...parsed.baseFields!,
+              github: parsed.gh
+                ? { ...parsed.gh, orgs: existingProfile.github?.orgs }
                 : {
                     username: '',
                     host: typeof data.host === 'string' && data.host.trim() ? data.host.trim() : 'github.com',
                     orgs: existingProfile.github?.orgs,
                   },
+              authentication: parsed.authConfig,
             };
 
-            if (isSsh) {
-              input.authentication = {
-                type: 'ssh',
-                source: 'user-input',
-                sshKeyPath: rawSshKey || '',
-              };
-            } else if (data.authType === 'none') {
-              input.authentication = {
-                type: 'none',
-                source: 'user-input',
-                sshKeyPath: '',
-              };
-            } else if (data.authType === 'pat' || (!data.authType && patVal && patVal.length > 0)) {
-              input.authentication = {
-                type: 'pat',
-                source: 'vs-code-secret-storage',
-                sshKeyPath: '',
-              };
-            }
-
-            const secretToSave = !isSsh && data.authType === 'pat' && patVal && patVal.length > 0 ? patVal : undefined;
-            const updated = await this.profileManager.updateProfile(data.id, input, secretToSave);
+            const updated = await this.profileManager.updateProfile(data.id, input, parsed.secretToken);
             this.accountVerifier?.clearCache(data.id);
             await this.applyProfileIfActive(updated);
             this.view?.webview.postMessage({ command: 'saveSuccess', profileId: updated.id });
@@ -386,18 +290,8 @@ export class SidebarViewProvider implements vscode.WebviewViewProvider {
                 result: res,
               });
               if (res.success) {
-                if (res.login && !profile.github?.username) {
-                  try {
-                    await this.profileManager.updateProfile(profile.id, {
-                      github: {
-                        host: profile.github?.host || 'github.com',
-                        username: res.login,
-                        orgs: profile.github?.orgs,
-                      },
-                    });
-                    this.onProfileChanged?.();
-                    await this.refresh();
-                  } catch {}
+                if (await this.profileManager.syncVerifiedLogin(profile, res.login, this.onProfileChanged)) {
+                  await this.refresh();
                 }
                 vscode.window.showInformationMessage(`Verified "${profile.name}": ${res.message}`);
               } else {
@@ -589,11 +483,8 @@ export class SidebarViewProvider implements vscode.WebviewViewProvider {
           remotes: repository.remotes,
         });
 
-        const origin = repository.remotes.find(r => r.name === 'origin') || repository.remotes[0];
-        if (origin && origin.owner && origin.repository) {
-          const host = origin.host || 'github.com';
-          repoUrl = `https://${host}/${origin.owner}/${origin.repository}`;
-        }
+        const origin = getPrimaryRemote(repository.remotes);
+        repoUrl = getRemoteWebUrl(origin);
       }
     }
 
@@ -608,6 +499,83 @@ export class SidebarViewProvider implements vscode.WebviewViewProvider {
       scanPerformed: this.scanPerformed,
       profileStatuses: this.profileStatuses,
     };
+  }
+
+  private async parseAndValidateProfileForm(
+    data: any,
+    existingProfile?: GitProfile
+  ): Promise<{
+    error?: string;
+    baseFields?: { name: string; git: GitIdentityInput };
+    gh?: GitHubIdentityInput;
+    authConfig?: AuthenticationConfigInput;
+    secretToken?: string;
+  }> {
+    const valError = this.validateProfileFormData(data);
+    if (valError) {
+      return { error: valError };
+    }
+
+    const rawSshKey = typeof data.sshKeyPath === 'string' ? data.sshKeyPath.trim() : undefined;
+    const isSsh = data.authType === 'ssh' || (!data.authType && Boolean(rawSshKey));
+    if (isSsh && rawSshKey && !Validation.isValidSshKeyPath(rawSshKey)) {
+      return { error: `Invalid SSH key path: "${data.sshKeyPath}". Path contains invalid characters or command flags.` };
+    }
+
+    const baseFields = this.toProfileGitFields(data);
+    let gh = this.extractGitHubIdentity(data);
+    const patVal = typeof data.pat === 'string' ? data.pat.trim() : undefined;
+
+    if (!gh && this.accountVerifier) {
+      try {
+        const host = typeof data.host === 'string' && data.host.trim() ? data.host.trim() : 'github.com';
+        if (data.authType === 'pat') {
+          const tokenToVerify = patVal || (existingProfile ? await this.profileManager.getAuthManager().getPatAuth().getToken(existingProfile.id) : undefined);
+          if (tokenToVerify) {
+            const res = await this.accountVerifier.verifyPatToken(tokenToVerify, host);
+            if (res.success && res.login) {
+              gh = { host, username: res.login };
+            }
+          }
+        } else if (isSsh) {
+          const res = await this.accountVerifier.verifySshKey(rawSshKey, host);
+          if (res.success && res.login) {
+            gh = { host, username: res.login };
+          }
+        }
+      } catch (err) {
+        logger.debug(`Account verification lookup skipped or failed during form submission: ${String(err)}`);
+      }
+    }
+
+    let authConfig: AuthenticationConfigInput;
+    if (isSsh) {
+      authConfig = {
+        type: 'ssh',
+        source: 'user-input',
+        sshKeyPath: rawSshKey || (existingProfile ? '' : undefined),
+      };
+    } else if (data.authType === 'none') {
+      authConfig = {
+        type: 'none',
+        source: 'user-input',
+        sshKeyPath: existingProfile ? '' : undefined,
+      };
+    } else if (data.authType === 'pat' || (!data.authType && patVal && patVal.length > 0)) {
+      authConfig = {
+        type: 'pat',
+        source: 'vs-code-secret-storage',
+        sshKeyPath: existingProfile ? '' : undefined,
+      };
+    } else {
+      authConfig = {
+        type: 'none',
+        source: 'user-input',
+      };
+    }
+
+    const secretToken = authConfig.type === 'pat' && patVal && patVal.length > 0 ? patVal : undefined;
+    return { baseFields, gh, authConfig, secretToken };
   }
 
   private validateProfileFormData(data: any): string | undefined {

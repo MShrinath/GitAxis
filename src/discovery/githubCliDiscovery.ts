@@ -46,7 +46,7 @@ export class GitHubCliDiscovery {
         const accountMatch = /account ([a-zA-Z0-9\-_]+)/i.exec(line);
         if (accountMatch) {
           const username = accountMatch[1];
-          const isActive = line.includes('Active account: true') || line.includes('✓');
+          const isActive = line.includes('Active account: true') || line.includes('\u2713');
           accounts.push({
             host: currentHost,
             username,
