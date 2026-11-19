@@ -141,19 +141,19 @@ export class HtmlBuilder {
 </head>
 <body>
   <!-- ACTIVE IDENTITY & REPO -->
-  <div class="section">
+  <div class="section" role="region" aria-label="Active Identity">
     <div class="section-title-row">
       <span class="section-title">ACTIVE IDENTITY</span>
       <div class="header-actions">
-        <button type="button" class="icon-btn-ghost" title="Scan local Git &amp; GitHub CLI logins" data-action="scanAccounts">
+        <button type="button" class="icon-btn-ghost" title="Scan local Git &amp; GitHub CLI logins" aria-label="Scan accounts" data-action="scanAccounts">
           ${Icons.search}
         </button>
-        <button type="button" class="icon-btn-ghost" title="Refresh state" data-action="refresh">
+        <button type="button" class="icon-btn-ghost" title="Refresh state" aria-label="Refresh state" data-action="refresh">
           ${Icons.refresh}
         </button>
       </div>
     </div>
-    <div class="card card-active-identity">
+    <div id="active-identity-card" class="card card-active-identity" role="region" aria-label="Current Identity">
       <div class="card-header-row">
         <div class="card-title-group">
           <span class="status-dot ${profile ? 'dot-active' : 'dot-inactive'}"></span>
@@ -170,7 +170,7 @@ export class HtmlBuilder {
         </div>
         <div class="meta-item">
           ${Icons.github}
-          <span>GitHub: <strong>${profileUser}</strong>${hasGithub && profileHost !== 'github.com' ? ` <span class="sub">(${escapeHtml(profileHost)})</span>` : ''}</span>
+          <span>GitHub: <strong>${profileUser}</strong>${hasGithub && profileHost !== 'github.com' ? ` <span class="sub enterprise-host-tag">(${escapeHtml(profileHost)})</span>` : ''}</span>
         </div>
       </div>
     </div>
@@ -238,11 +238,11 @@ export class HtmlBuilder {
   }
 
   <!-- PROFILES LIST -->
-  <div class="section">
+  <div class="section" id="profiles-container" role="region" aria-label="Profiles">
     <div class="section-title-row">
       <span class="section-title">PROFILES (${profiles.length})</span>
       <div style="display: flex; gap: 4px; align-items: center;">
-        <button type="button" class="icon-btn-ghost" title="Scan local Git &amp; GitHub CLI logins" data-action="scanAccounts">
+        <button type="button" class="icon-btn-ghost" title="Scan local Git &amp; GitHub CLI logins" aria-label="Scan accounts" data-action="scanAccounts">
           ${Icons.search}
         </button>
         <button type="button" class="btn-xs" data-action="startNewProfile">
@@ -252,8 +252,15 @@ export class HtmlBuilder {
     </div>
     ${
       profiles.length === 0
-        ? `<div class="hint-text">No profiles created yet. Use the form below or scan accounts above.</div>`
-        : profiles
+        ? `<div class="empty-state-card" role="status" aria-label="No profiles configured">
+        <div class="hint-text">No profiles created yet. Use the form below or scan accounts above.</div>
+        <div class="empty-state-actions" style="margin-top: 8px; display: flex; gap: 6px;">
+          <button type="button" class="btn btn-sm btn-primary" data-action="startNewProfile">${Icons.plus} Add Profile</button>
+          <button type="button" class="btn btn-sm btn-secondary" data-action="scanAccounts">${Icons.search} Scan Accounts</button>
+        </div>
+      </div>`
+        : `<div class="profiles-list" role="list" aria-label="Configured Profiles">` +
+          profiles
             .map(p => {
               const isActive = profile?.id === p.id;
               const authText = p.authentication.type === 'pat'
@@ -266,15 +273,23 @@ export class HtmlBuilder {
               const isNeutral = pStatus ? pStatus.status === 'not-verified' : false;
               const pStatusClass = pStatus ? (isVerified ? 'status-verified' : isNeutral ? 'status-neutral' : 'status-unverified') : '';
               const pStatusTitle = pStatus ? (isVerified ? `Verified: ${pStatus.message || 'Valid'}` : isNeutral ? `Status: ${pStatus.message || 'Configured, not verified'}` : `Verification warning: ${pStatus.message || 'Check credentials'}`) : 'Verifying credentials...';
+              const pStatusBadge = pStatus
+                ? isVerified
+                  ? `<span class="badge badge-success verification-badge" role="status" aria-label="Verified">${Icons.check} Verified</span>`
+                  : isNeutral
+                  ? `<span class="badge badge-muted verification-badge" role="status" aria-label="Unverified">Unverified</span>`
+                  : `<span class="badge badge-danger verification-badge" role="status" aria-label="Failed">${Icons.alert} Failed</span>`
+                : '';
               return `
-      <div class="card ${isActive ? 'card-active-identity' : ''}">
+      <div class="card ${isActive ? 'card-active-identity' : ''}" role="listitem" aria-label="${escapeHtml(p.name)} profile">
         <div class="card-header-row">
           <div class="card-title-group">
             <span class="status-dot ${isActive ? 'dot-active' : 'dot-inactive'}"></span>
-            <span id="profile-name-${escapeHtml(p.id)}" class="profile-title-name ${pStatusClass}" title="${escapeHtml(pStatusTitle)}">${escapeHtml(p.name)}</span>
+            <span id="profile-name-${escapeHtml(p.id)}" class="profile-title-name ${pStatusClass}" title="${escapeHtml(pStatusTitle)}" role="status" aria-label="${escapeHtml(pStatusTitle)}">${escapeHtml(p.name)}</span>
           </div>
-          <div>
-            ${isActive ? `<span class="badge badge-success">Active</span>` : ''}
+          <div class="card-badges-group">
+            ${pStatusBadge}
+            ${isActive ? `<span class="badge badge-success" role="status" aria-label="Active profile">Active</span>` : ''}
           </div>
         </div>
         <div class="meta-list">
@@ -284,7 +299,7 @@ export class HtmlBuilder {
           </div>
           <div class="meta-item">
             ${Icons.github}
-            <span>GitHub: <strong>${p.github?.username ? '@' + escapeHtml(p.github.username) : 'None'}</strong>${p.github?.username && p.github?.host && p.github.host !== 'github.com' ? ` <span class="sub">(${escapeHtml(p.github.host)})</span>` : ''}</span>
+            <span>GitHub: <strong>${p.github?.username ? '@' + escapeHtml(p.github.username) : 'None'}</strong>${p.github?.username && p.github?.host && p.github.host !== 'github.com' ? ` <span class="sub enterprise-host-tag">(${escapeHtml(p.github.host)})</span>` : ''}</span>
           </div>
           <div class="meta-item">
             ${Icons.link}
@@ -299,18 +314,19 @@ export class HtmlBuilder {
         </div>
       </div>`;
             })
-            .join('')
+            .join('') +
+          `</div>`
     }
   </div>
 
   <!-- IN-SIDEBAR PERSISTENT PROFILE FORM (collapsed by default, shown on Add/Edit) -->
-  <div class="section form-section-noborder hidden" id="profile-form-section" style="display: none;">
+  <div class="section form-section-noborder hidden" id="profile-form-section" role="region" aria-label="Profile Form" style="display: none;">
     <div class="section-title-row">
       <span class="section-title" id="form-title">CREATE / EDIT PROFILE</span>
-      <button type="button" class="icon-btn-ghost" title="Close" data-action="cancelProfileForm">&times;</button>
+      <button type="button" class="icon-btn-ghost" title="Close" aria-label="Close form" data-action="cancelProfileForm">&times;</button>
     </div>
-    <div class="form-box">
-      <div id="form-error-msg" class="banner-error hidden"></div>
+    <div class="form-box" id="profile-form-container" role="form" aria-label="Profile Configuration Form">
+      <div id="form-error-msg" class="banner-error hidden" role="alert" aria-live="assertive"></div>
       <input type="hidden" id="form-profile-id" value="" />
       
       <div class="form-group">
@@ -367,8 +383,8 @@ export class HtmlBuilder {
       </div>
 
       <div class="form-group">
-        <label class="form-label">Identity Scope</label>
-        <div class="radio-deck">
+        <label class="form-label" id="label-identity-scope">Identity Scope</label>
+        <div class="radio-deck" role="radiogroup" aria-labelledby="label-identity-scope">
           <label class="radio-item">
             <input type="radio" name="form-scope" value="local" checked />
             <span>Current Repo (local)</span>

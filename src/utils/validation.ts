@@ -1,8 +1,10 @@
 export class Validation {
   public static isValidEmail(email: string): boolean {
-    if (!email || typeof email !== 'string') return false;
+    if (!email || typeof email !== 'string' || email.length > 254) return false;
+    const trimmed = email.trim();
+    if (trimmed.length === 0 || trimmed.length > 254) return false;
     const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    return re.test(email.trim());
+    return re.test(trimmed);
   }
 
   public static isValidProfileName(name: string): boolean {
@@ -14,6 +16,7 @@ export class Validation {
   public static isValidBranchName(branch: string): boolean {
     if (!branch || typeof branch !== 'string') return false;
     const trimmed = branch.trim();
+    if (trimmed.length === 0 || trimmed.length > 256) return false;
     if (trimmed.startsWith('-')) return false;
     if (trimmed.startsWith('/') || trimmed.endsWith('/') || trimmed.endsWith('.lock')) return false;
     if (trimmed.includes('..') || trimmed.includes('@{') || trimmed.includes('\\') || trimmed.includes(' ')) return false;
@@ -28,6 +31,7 @@ export class Validation {
   public static isValidRemoteName(name: string): boolean {
     if (!name || typeof name !== 'string') return false;
     const trimmed = name.trim();
+    if (trimmed.length === 0 || trimmed.length > 256) return false;
     if (trimmed.startsWith('-')) return false;
     return /^[a-zA-Z0-9_\-\.]+$/.test(trimmed);
   }
@@ -35,6 +39,7 @@ export class Validation {
   public static isValidRef(ref: string): boolean {
     if (!ref || typeof ref !== 'string') return false;
     const trimmed = ref.trim();
+    if (trimmed.length === 0 || trimmed.length > 256) return false;
     if (trimmed.startsWith('-')) return false;
     if (/[\x00-\x1f\x7f\s]/.test(trimmed)) return false;
     if (trimmed.includes('..') || trimmed.includes('\\')) return false;
@@ -44,13 +49,36 @@ export class Validation {
   public static isValidGitUrl(url: string): boolean {
     if (!url || typeof url !== 'string') return false;
     const trimmed = url.trim();
+    if (trimmed.length === 0 || trimmed.length > 2048) return false;
     if (trimmed.startsWith('-')) return false;
     // Reject ext:: and file:// protocols explicitly
     if (trimmed.startsWith('ext::') || trimmed.startsWith('file://')) return false;
+    // Reject shell metacharacters, command chaining, and control characters
+    if (/[\r\n;`$&|><"'\x00-\x1f\x7f]/.test(trimmed)) return false;
+    // Reject SSH command injection vectors like ProxyCommand or LocalCommand
+    if (/proxycommand/i.test(trimmed) || /localcommand/i.test(trimmed)) return false;
+
     // Standard protocols: https://, http://, ssh://, git://
-    if (/^(https?|ssh|git):\/\/[^\s]+$/.test(trimmed)) return true;
+    const protoMatch = /^(https?|ssh|git):\/\/([^\s\/]+)(?:\/.*)?$/.exec(trimmed);
+    if (protoMatch) {
+      const hostPart = protoMatch[2];
+      // Host or user@host must not start with dash or contain options
+      if (hostPart.startsWith('-') || hostPart.includes(' -') || hostPart.startsWith('user@-')) return false;
+      // Extract hostname (strip user@ and :port)
+      const hostOnly = hostPart.replace(/^[^@]+@/, '').replace(/:\d+$/, '');
+      if (hostOnly.startsWith('-')) return false;
+      return true;
+    }
+
     // SCP-style SSH: [user@]host:owner/repo(.git)
-    if (/^([a-zA-Z0-9_.-]+@)?[a-zA-Z0-9_.-]+:[a-zA-Z0-9_./~-]+$/.test(trimmed)) return true;
+    const scpMatch = /^([a-zA-Z0-9_.-]+@)?([a-zA-Z0-9_.-]+):([a-zA-Z0-9_./~-]+)$/.exec(trimmed);
+    if (scpMatch) {
+      const host = scpMatch[2];
+      const repoPath = scpMatch[3];
+      if (host.startsWith('-') || repoPath.startsWith('-')) return false;
+      return true;
+    }
+
     return false;
   }
 
@@ -81,7 +109,8 @@ export class Validation {
   public static isValidHost(host: string): boolean {
     if (!host || typeof host !== 'string') return false;
     const clean = host.replace(/^https?:\/\//i, '').replace(/\/+$/, '').trim();
-    if (!clean) return false;
+    if (!clean || clean.length > 253) return false;
+    if (clean.startsWith('-')) return false;
     // Disallow dangerous characters for git config section names and CLI flags
     if (/[\s"';#\\]/.test(clean)) return false;
     // Standard hostname pattern with optional port
@@ -94,6 +123,8 @@ export class Validation {
     if (/[\r\n"';#\x00-\x1f]/.test(rule)) return false;
     const trimmed = rule.trim();
     if (trimmed.length === 0 || trimmed.length > 512) return false;
+    // Prevent directory traversal attacks
+    if (trimmed.includes('..')) return false;
     return true;
   }
 
@@ -105,10 +136,12 @@ export class Validation {
     }
     // Reject quotes, control chars, semicolons, shell metacharacters
     if (/[\r\n"';#&|`$><\x00-\x1f\x7f]/.test(trimmed)) return false;
+    // Prevent directory traversal attacks
+    if (trimmed.includes('..')) return false;
     // Prevent option injection (cannot start with dash)
     if (trimmed.startsWith('-')) return false;
     // Reject SSH command injection vectors like ProxyCommand or LocalCommand
-    if (/-(?:o\s*proxycommand|o\s*localcommand)/i.test(trimmed) || /proxycommand/i.test(trimmed) || /localcommand/i.test(trimmed)) {
+    if (/proxycommand/i.test(trimmed) || /localcommand/i.test(trimmed) || /remotecommand/i.test(trimmed) || /pkcs11provider/i.test(trimmed) || /securitykeyprovider/i.test(trimmed) || /\s-F\s/i.test(trimmed)) {
       return false;
     }
     return trimmed.length > 0 && trimmed.length <= 512;

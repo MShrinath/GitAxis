@@ -32,7 +32,9 @@ export class SecretStore {
   }
 
   public getSecretKey(profileId: string, secretType: string): string {
-    return `gitaxis.profile.${profileId}.${secretType}`;
+    const cleanId = (profileId || '').replace(/[^a-zA-Z0-9_\-]/g, '');
+    const cleanType = (secretType || '').replace(/[^a-zA-Z0-9_\-]/g, '');
+    return `gitaxis.profile.${cleanId}.${cleanType}`;
   }
 
   public async getSecret(profileId: string, secretType: string): Promise<string | undefined> {

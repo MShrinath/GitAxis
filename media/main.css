@@ -1,8 +1,10 @@
-:root {
+:root,
+body.vscode-dark {
   --bg: var(--vscode-sideBar-background, #181818);
   --fg: var(--vscode-sideBar-foreground, #cccccc);
   --card-bg: var(--vscode-editor-background, #1f1f1f);
   --card-border: var(--vscode-widget-border, rgba(255, 255, 255, 0.08));
+  --card-border-subtle: rgba(255, 255, 255, 0.05);
   --btn-bg: var(--vscode-button-background, #0078d4);
   --btn-fg: var(--vscode-button-foreground, #ffffff);
   --btn-hover: var(--vscode-button-hoverBackground, #026ec1);
@@ -21,8 +23,48 @@
   --badge-info-fg: var(--vscode-textLink-foreground, #4daafc);
   --badge-muted-bg: rgba(255, 255, 255, 0.06);
   --badge-muted-fg: var(--vscode-descriptionForeground, #888888);
+  --dot-inactive: rgba(255, 255, 255, 0.25);
   --error-fg: var(--vscode-errorForeground, #f48771);
   --subtext: var(--vscode-descriptionForeground, #999999);
+}
+
+body.vscode-light {
+  --bg: var(--vscode-sideBar-background, #f3f3f3);
+  --fg: var(--vscode-sideBar-foreground, #333333);
+  --card-bg: var(--vscode-editor-background, #ffffff);
+  --card-border: var(--vscode-widget-border, rgba(0, 0, 0, 0.1));
+  --card-border-subtle: rgba(0, 0, 0, 0.06);
+  --btn-sec-bg: var(--vscode-button-secondaryBackground, rgba(0, 0, 0, 0.06));
+  --btn-sec-fg: var(--vscode-button-secondaryForeground, #333333);
+  --btn-sec-hover: var(--vscode-button-secondaryHoverBackground, rgba(0, 0, 0, 0.1));
+  --input-bg: var(--vscode-input-background, #ffffff);
+  --input-fg: var(--vscode-input-foreground, #333333);
+  --input-border: var(--vscode-input-border, rgba(0, 0, 0, 0.18));
+  --badge-muted-bg: rgba(0, 0, 0, 0.05);
+  --badge-muted-fg: var(--vscode-descriptionForeground, #666666);
+  --dot-inactive: rgba(0, 0, 0, 0.25);
+  --subtext: var(--vscode-descriptionForeground, #666666);
+}
+
+body.vscode-high-contrast,
+body.vscode-high-contrast-light {
+  --bg: var(--vscode-sideBar-background, #000000);
+  --fg: var(--vscode-sideBar-foreground, #ffffff);
+  --card-bg: var(--vscode-editor-background, #000000);
+  --card-border: var(--vscode-contrastBorder, #ffffff);
+  --card-border-subtle: var(--vscode-contrastBorder, #ffffff);
+  --input-bg: var(--vscode-input-background, #000000);
+  --input-fg: var(--vscode-input-foreground, #ffffff);
+  --input-border: var(--vscode-contrastBorder, #ffffff);
+  --focus-border: var(--vscode-contrastActiveBorder, #f38518);
+  --dot-inactive: #888888;
+}
+
+body.vscode-high-contrast .card,
+body.vscode-high-contrast .btn,
+body.vscode-high-contrast .input-text,
+body.vscode-high-contrast .badge {
+  border: 1px solid var(--vscode-contrastBorder, #ffffff) !important;
 }
 
 * {
@@ -551,4 +593,55 @@ body {
 
 .hidden {
   display: none !important;
+}
+
+/* Apple Design Craft & Accessibility Additions */
+.empty-state-card {
+  background: var(--card-bg);
+  border: 1px dashed var(--card-border);
+  border-radius: 6px;
+  padding: 14px 12px;
+  text-align: center;
+  margin-top: 4px;
+}
+
+.empty-state-actions {
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.card-badges-group {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.enterprise-host-tag {
+  font-weight: 500;
+  letter-spacing: 0.2px;
+}
+
+.verification-badge {
+  text-transform: capitalize;
+}
+
+/* Zero Layout Shift Guarantees */
+#pat-verify-status,
+#ssh-verify-status {
+  min-height: 16px;
+  line-height: 16px;
+}
+
+.verify-result-box {
+  min-height: 0;
+  transition: opacity 0.15s ease-in-out;
+}
+
+button:focus-visible,
+input:focus-visible,
+select:focus-visible {
+  outline: 1px solid var(--focus-border);
+  outline-offset: 1px;
 }

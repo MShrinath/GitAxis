@@ -1,5 +1,6 @@
 import { execFile } from 'child_process';
 import { promisify } from 'util';
+import { Validation } from '../utils/validation';
 
 const execFileAsync = promisify(execFile);
 
@@ -20,6 +21,12 @@ export class GitHubCliAuth {
   }
 
   public async getToken(hostname?: string, username?: string): Promise<string | undefined> {
+    if (hostname && (hostname.startsWith('-') || !Validation.isValidHost(hostname))) {
+      return undefined;
+    }
+    if (username && (username.startsWith('-') || !/^[a-zA-Z0-9_\-\.]+$/.test(username))) {
+      return undefined;
+    }
     const cacheKey = `${hostname || 'github.com'}:${username || 'default'}`;
     const cached = this.tokenCache.get(cacheKey);
     if (cached && Date.now() < cached.expiresAt) {

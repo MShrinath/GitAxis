@@ -18,17 +18,68 @@ export interface FolderRuleMatch {
   rule: string;
 }
 
+export class LruCache<K, V> {
+  private readonly maxSize: number;
+  private readonly map: Map<K, V>;
+
+  constructor(maxSize: number = 1000) {
+    this.maxSize = maxSize;
+    this.map = new Map<K, V>();
+  }
+
+  public get(key: K): V | undefined {
+    const val = this.map.get(key);
+    if (val !== undefined) {
+      this.map.delete(key);
+      this.map.set(key, val);
+    }
+    return val;
+  }
+
+  public set(key: K, value: V): void {
+    if (this.map.has(key)) {
+      this.map.delete(key);
+    } else if (this.map.size >= this.maxSize) {
+      const oldestKey = this.map.keys().next().value;
+      if (oldestKey !== undefined) {
+        this.map.delete(oldestKey);
+      }
+    }
+    this.map.set(key, value);
+  }
+
+  public clear(): void {
+    this.map.clear();
+  }
+
+  public get size(): number {
+    return this.map.size;
+  }
+}
+
 export class FolderRuleManager {
   private homedir: string;
   private gitConfigPath: string;
   private gitAxisDir: string;
   private profilesDir: string;
 
+  private matchCache = new LruCache<string, boolean>(2000);
+  private regexCache = new LruCache<string, RegExp>(500);
+  private normPathCache = new LruCache<string, string>(1000);
+  private resolveCache = new LruCache<string, FolderRuleMatch | null>(1000);
+
   constructor(customHomedir?: string, customGitConfigPath?: string) {
     this.homedir = customHomedir || os.homedir();
     this.gitConfigPath = customGitConfigPath || path.join(this.homedir, '.gitconfig');
     this.gitAxisDir = path.join(this.homedir, '.gitaxis');
     this.profilesDir = path.join(this.gitAxisDir, 'profiles');
+  }
+
+  public clearCache(): void {
+    this.matchCache.clear();
+    this.regexCache.clear();
+    this.normPathCache.clear();
+    this.resolveCache.clear();
   }
 
   public getProfilesDirectory(): string {
@@ -59,6 +110,10 @@ export class FolderRuleManager {
    * Converts backslashes to forward slashes, expands tilde, and removes trailing wildcards/slashes.
    */
   public normalizePathForComparison(inputPath: string): string {
+    const cached = this.normPathCache.get(inputPath);
+    if (cached !== undefined) {
+      return cached;
+    }
     let normalized = inputPath.trim();
     if (normalized.startsWith('~')) {
       normalized = path.join(this.homedir, normalized.slice(1));
@@ -70,6 +125,7 @@ export class FolderRuleManager {
     }
     // Remove redundant trailing slashes
     normalized = normalized.replace(/\/+$/, '');
+    this.normPathCache.set(inputPath, normalized);
     return normalized;
   }
 
@@ -81,23 +137,45 @@ export class FolderRuleManager {
    *   "git@github.com:acme/**" matches remotes for acme org
    */
   public matchesPattern(targetPath: string, rulePattern: string, remotes?: GitRemote[]): boolean {
-    if (!rulePattern) return false;
+    if (!rulePattern || typeof rulePattern !== 'string' || !Validation.isValidFolderRule(rulePattern)) return false;
 
     const cleanRule = rulePattern.trim();
 
+    // Check LRU cache first
+    let remotesKey = '';
+    if (remotes && remotes.length > 0) {
+      remotesKey = '::' + remotes.map(r => `${r.name || ''}=${r.fetchUrl || ''};${r.pushUrl || ''}`).join(',');
+    }
+    const isWinOrMac = Platform.isWindows() || Platform.isMacOS();
+    const cacheKey = `${isWinOrMac ? '1' : '0'}:${targetPath}::${cleanRule}${remotesKey}`;
+    const cachedResult = this.matchCache.get(cacheKey);
+    if (cachedResult !== undefined) {
+      return cachedResult;
+    }
+
+    const result = this.computeMatchesPattern(targetPath, cleanRule, remotes);
+    this.matchCache.set(cacheKey, result);
+    return result;
+  }
+
+  private computeMatchesPattern(targetPath: string, cleanRule: string, remotes?: GitRemote[]): boolean {
     // Remote URL matching (hasconfig:remote.*.url: or direct remote pattern)
     if (cleanRule.startsWith('hasconfig:remote.*.url:') || /^(?:https?:\/\/|git@|ssh:\/\/)/i.test(cleanRule)) {
       if (!remotes || remotes.length === 0) return false;
-      const urlPattern = cleanRule.replace(/^hasconfig:remote\.\*\.url:/i, '').trim();
-      const regexStr = '^' + urlPattern
-        .replace(/[.+?^${}()|[\]\\]/g, '\\$&')
-        .replace(/\*\*/g, '.*')
-        .replace(/\*/g, '[^/]*') + '$';
-      const regex = new RegExp(regexStr, 'i');
+      let regex = this.regexCache.get(cleanRule);
+      if (!regex) {
+        const urlPattern = cleanRule.replace(/^hasconfig:remote\.\*\.url:/i, '').trim();
+        const regexStr = '^' + urlPattern
+          .replace(/[.+?^${}()|[\]\\]/g, '\\$&')
+          .replace(/\*\*/g, '.*')
+          .replace(/\*/g, '[^/]*') + '$';
+        regex = new RegExp(regexStr, 'i');
+        this.regexCache.set(cleanRule, regex);
+      }
       return remotes.some(r => {
         const fUrl = r.fetchUrl?.trim() || '';
         const pUrl = r.pushUrl?.trim() || '';
-        return regex.test(fUrl) || regex.test(pUrl);
+        return regex!.test(fUrl) || regex!.test(pUrl);
       });
     }
 
@@ -137,6 +215,23 @@ export class FolderRuleManager {
    * If multiple rules match, returns the longest (most specific) rule match.
    */
   public resolveProfile(targetPath: string, profiles: GitProfile[], remotes?: GitRemote[]): FolderRuleMatch | undefined {
+    if (!targetPath || !profiles || profiles.length === 0) return undefined;
+
+    let remotesKey = '';
+    if (remotes && remotes.length > 0) {
+      remotesKey = '::' + remotes.map(r => `${r.name || ''}=${r.fetchUrl || ''};${r.pushUrl || ''}`).join(',');
+    }
+    const isWinOrMac = Platform.isWindows() || Platform.isMacOS();
+    const profilesKey = profiles.length <= 10
+      ? profiles.map(p => p.id).join(',')
+      : `${profiles[0].id}_${profiles.length}_${profiles[profiles.length - 1].id}`;
+    const cacheKey = `${isWinOrMac ? '1' : '0'}:${targetPath}::${profilesKey}${remotesKey}`;
+
+    const cached = this.resolveCache.get(cacheKey);
+    if (cached !== undefined) {
+      return cached ?? undefined;
+    }
+
     let bestMatch: FolderRuleMatch | undefined;
     let longestRuleLength = -1;
 
@@ -153,6 +248,7 @@ export class FolderRuleManager {
       }
     }
 
+    this.resolveCache.set(cacheKey, bestMatch ?? null);
     return bestMatch;
   }
 

@@ -1,4 +1,5 @@
 import { GitRemote } from '../contracts';
+import { Validation } from '../utils/validation';
 
 export function getPrimaryRemote(remotes?: GitRemote[], preferredName: string = 'origin'): GitRemote | undefined {
   if (!remotes || remotes.length === 0) return undefined;
@@ -31,10 +32,13 @@ export class RemoteParser {
   }
 
   public static parseUrl(url: string): { host: string; owner: string; repository: string } | undefined {
-    if (!url) return undefined;
+    if (!url || typeof url !== 'string') return undefined;
     const trimmed = url.trim();
+    if (!Validation.isValidGitUrl(trimmed)) {
+      return undefined;
+    }
 
-    const scpMatch = /^([a-zA-Z0-9._-]+)@([^:]+):([^\/]+)\/(.+?)(?:\.git)?$/i.exec(trimmed);
+    const scpMatch = /^([a-zA-Z0-9._-]+)@([a-zA-Z0-9._-]+):([a-zA-Z0-9._-]+)\/([a-zA-Z0-9._~-]+?)(?:\.git)?$/i.exec(trimmed);
     if (scpMatch) {
       return {
         host: scpMatch[2],
@@ -45,8 +49,11 @@ export class RemoteParser {
 
     try {
       const parsedUrl = new URL(trimmed.includes('://') ? trimmed : `https://${trimmed}`);
+      if (!parsedUrl.hostname || parsedUrl.hostname.startsWith('-')) {
+        return undefined;
+      }
       const pathname = parsedUrl.pathname.replace(/^\//, '').replace(/\.git$/, '');
-      const parts = pathname.split('/');
+      const parts = pathname.split('/').filter(Boolean);
       if (parts.length >= 2) {
         return {
           host: parsedUrl.hostname,

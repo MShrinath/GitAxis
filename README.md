@@ -69,6 +69,20 @@ GitAxis gives you a dedicated management layer right inside VS Code:
 
 ---
 
+## Architecture & Workflow
+
+<p align="center">
+  <img alt="GitAxis Architecture and Workflow" src="media/workflow.svg" width="100%" />
+</p>
+
+GitAxis operates as an automated control layer between your developer workflow, VS Code Source Control, operating system credential stores, and Git repositories:
+
+- **Identity Management Layer**: Coordinates active profile state with repository-scoped `.git/config` and automated `includeIf` conditional directives.
+- **Hardware-Backed Secret Storage**: Delegates Personal Access Tokens and credentials directly to the OS Keychain (Windows Credential Manager, macOS Keychain, Linux Secret Service).
+- **Non-Destructive Git CLI Integration**: Preserves your existing commit signing, GPG keys, and native VS Code SCM workflows while enforcing pre-commit and pre-push safety guards.
+
+---
+
 ## Commands & Shortcuts
 
 | Command | Shortcut | Description |

@@ -64,6 +64,30 @@
     }
   }
 
+  function isValidSshKeyPath(keyPath) {
+    if (!keyPath || typeof keyPath !== 'string') return false;
+    let trimmed = keyPath.trim();
+    if ((trimmed.startsWith('"') && trimmed.endsWith('"')) || (trimmed.startsWith("'") && trimmed.endsWith("'"))) {
+      trimmed = trimmed.slice(1, -1).trim();
+    }
+    if (/[\r\n"';#&|`$><\x00-\x1f\x7f]/.test(trimmed)) return false;
+    if (trimmed.includes('..')) return false;
+    if (trimmed.startsWith('-')) return false;
+    if (/proxycommand/i.test(trimmed) || /localcommand/i.test(trimmed) || /remotecommand/i.test(trimmed) || /pkcs11provider/i.test(trimmed) || /securitykeyprovider/i.test(trimmed) || /\s-F\s/i.test(trimmed)) {
+      return false;
+    }
+    return trimmed.length > 0 && trimmed.length <= 512;
+  }
+
+  function isValidHost(host) {
+    if (!host || typeof host !== 'string') return false;
+    const clean = host.replace(/^https?:\/\//i, '').replace(/\/+$/, '').trim();
+    if (!clean || clean.length > 253) return false;
+    if (clean.startsWith('-')) return false;
+    if (/[\s"';#\\]/.test(clean)) return false;
+    return /^[a-zA-Z0-9]([a-zA-Z0-9\-_]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9\-_]*[a-zA-Z0-9])?)*(:\d+)?$/.test(clean);
+  }
+
   function saveProfileForm() {
     hideFormError();
     const id = (document.getElementById('form-profile-id')?.value || '').trim();
@@ -89,6 +113,16 @@
     if (!gitEmail || !gitEmail.includes('@')) {
       showFormError('A valid Git Email is required.');
       return;
+    }
+    if (host && !isValidHost(host)) {
+      showFormError('Invalid GitHub Host. Host cannot start with dash or contain special characters.');
+      return;
+    }
+    if (authType === 'ssh' && sshKeyPath) {
+      if (!isValidSshKeyPath(sshKeyPath)) {
+        showFormError('Invalid SSH key path. Paths cannot start with hyphen or contain command options.');
+        return;
+      }
     }
 
     const submitBtn = document.getElementById('form-submit-btn');
@@ -315,6 +349,20 @@
     const host = (hostInput ? hostInput.value : '').trim() || 'github.com';
     const statusEl = document.getElementById('ssh-verify-status');
     const btn = document.getElementById('btn-verify-ssh');
+
+    if (host && !isValidHost(host)) {
+      if (statusEl) {
+        statusEl.innerHTML = '<span class="status-unverified">Invalid GitHub Host.</span>';
+      }
+      return;
+    }
+
+    if (sshKeyPath && !isValidSshKeyPath(sshKeyPath)) {
+      if (statusEl) {
+        statusEl.innerHTML = '<span class="status-unverified">Invalid SSH key path. Paths cannot start with hyphen or contain command options.</span>';
+      }
+      return;
+    }
 
     if (btn) {
       btn.disabled = true;

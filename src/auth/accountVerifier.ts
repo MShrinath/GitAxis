@@ -173,7 +173,7 @@ export class AccountVerifier {
       return {
         success: false,
         status: 'failed',
-        message: `Network error verifying PAT: ${String(err)}`,
+        message: `Network error verifying PAT: ${Validation.sanitizeUrl(String(err))}`,
       };
     }
   }
@@ -228,7 +228,7 @@ export class AccountVerifier {
       return {
         success: false,
         status: 'failed',
-        message: `Failed to verify gh CLI token: ${String(err)}`,
+        message: `Failed to verify gh CLI token: ${Validation.sanitizeUrl(String(err))}`,
       };
     }
   }
@@ -259,6 +259,13 @@ export class AccountVerifier {
     }
 
     const cleanHost = Platform.normalizeGitHubHost(host);
+    if (!Validation.isValidHost(cleanHost)) {
+      return {
+        success: false,
+        status: 'failed',
+        message: `Invalid host for SSH verification: "${host}"`,
+      };
+    }
     const sshTarget = `git@${cleanHost}`;
     args.push(
       '-o',
@@ -266,6 +273,7 @@ export class AccountVerifier {
       '-o',
       'StrictHostKeyChecking=accept-new',
       '-T',
+      '--',
       sshTarget
     );
 
@@ -282,7 +290,7 @@ export class AccountVerifier {
       return {
         success: false,
         status: 'failed',
-        message: `SSH test failed: ${e.stderr || e.message || String(err)}`,
+        message: `SSH test failed: ${Validation.sanitizeUrl(e.stderr || e.message || String(err))}`,
       };
     }
   }

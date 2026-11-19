@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.14.5] - 2026-11-19
+
+### Security & Hardening
+- **Command & Option Injection Guards**: Hardened URL, host, and SSH key validation to reject command injection options, leading hyphens, path traversal sequences (`..`), and shell metacharacters.
+- **Process Credential Redaction**: Sanitized error output streams in Git process executions to prevent token leakage in diagnostic error messages.
+
+### Optimized & Enhanced
+- **Folder Rule & Store LRU Caching**: Implemented zero-dependency bounded LRU caches and O(1) in-memory profile lookups, significantly accelerating conditional rule evaluation.
+- **Webview Accessibility & Workflow Diagram**: Added ARIA landmark roles and semantic labels across sidebar views, light/high-contrast theme support, and updated workflow documentation.
+
+---
+
 ## [0.14.4] - 2026-11-11
 
 ### Fixed & Hardened

@@ -39,6 +39,10 @@ export class PersistentProfileStore implements ProfileStore {
   private static readonly ASSOCIATIONS_KEY = 'gitaxis.repoAssociations';
 
   private memento: IMemento;
+  private cachedProfiles?: GitProfile[];
+  private idMap = new Map<ProfileId, GitProfile>();
+  private nameMap = new Map<string, GitProfile>();
+  private associationsCache?: Record<string, ProfileId>;
 
   constructor(memento?: IMemento) {
     this.memento = memento ?? new InMemoryMemento();
@@ -46,6 +50,26 @@ export class PersistentProfileStore implements ProfileStore {
 
   public setMemento(memento: IMemento): void {
     this.memento = memento;
+    this.cachedProfiles = undefined;
+    this.idMap.clear();
+    this.nameMap.clear();
+    this.associationsCache = undefined;
+  }
+
+  private ensureCache(): GitProfile[] {
+    if (this.cachedProfiles) {
+      return this.cachedProfiles;
+    }
+    const raw = this.memento.get<GitProfile[]>(PersistentProfileStore.PROFILES_KEY, []);
+    const profiles = Array.isArray(raw) ? raw : [];
+    this.cachedProfiles = profiles;
+    this.idMap.clear();
+    this.nameMap.clear();
+    for (const p of profiles) {
+      this.idMap.set(p.id, p);
+      this.nameMap.set(p.name.toLowerCase(), p);
+    }
+    return this.cachedProfiles;
   }
 
   private generateId(): string {
@@ -53,24 +77,40 @@ export class PersistentProfileStore implements ProfileStore {
   }
 
   public async list(): Promise<GitProfile[]> {
-    const raw = this.memento.get<GitProfile[]>(PersistentProfileStore.PROFILES_KEY, []);
-    return Array.isArray(raw) ? raw : [];
+    const profiles = this.ensureCache();
+    return [...profiles];
   }
 
   public async get(id: ProfileId): Promise<GitProfile | undefined> {
-    const profiles = await this.list();
-    return profiles.find(p => p.id === id);
+    this.ensureCache();
+    return this.idMap.get(id);
   }
 
   public async getByName(name: string): Promise<GitProfile | undefined> {
-    const profiles = await this.list();
-    return profiles.find(p => p.name.toLowerCase() === name.toLowerCase());
+    this.ensureCache();
+    return this.nameMap.get(name.toLowerCase());
   }
 
   public async create(input: CreateProfileInput): Promise<GitProfile> {
-    const profiles = await this.list();
-    const existing = profiles.find(p => p.name.toLowerCase() === input.name.toLowerCase());
-    if (existing) {
+    if (!Validation.isValidProfileName(input.name)) {
+      throw new Error(`Invalid profile name: "${input.name}"`);
+    }
+    if (!input.git || !input.git.name || input.git.name.length > 128) {
+      throw new Error(`Invalid git author name: "${input.git?.name}"`);
+    }
+    if (!Validation.isValidEmail(input.git.email)) {
+      throw new Error(`Invalid git author email: "${input.git?.email}"`);
+    }
+    if (input.folderRules) {
+      for (const rule of input.folderRules) {
+        if (!Validation.isValidFolderRule(rule)) {
+          throw new Error(`Invalid folder rule pattern: "${rule}"`);
+        }
+      }
+    }
+
+    this.ensureCache();
+    if (this.nameMap.has(input.name.toLowerCase())) {
       throw new Error(`Profile with name "${input.name}" already exists`);
     }
 
@@ -121,8 +161,10 @@ export class PersistentProfileStore implements ProfileStore {
       updatedAt: now,
     };
 
-    profiles.push(newProfile);
-    await this.memento.update(PersistentProfileStore.PROFILES_KEY, profiles);
+    this.cachedProfiles!.push(newProfile);
+    this.idMap.set(id, newProfile);
+    this.nameMap.set(newProfile.name.toLowerCase(), newProfile);
+    await this.memento.update(PersistentProfileStore.PROFILES_KEY, this.cachedProfiles);
 
     // If this is the only profile, set as active
     const active = await this.getActive();
@@ -134,19 +176,32 @@ export class PersistentProfileStore implements ProfileStore {
   }
 
   public async update(id: ProfileId, input: UpdateProfileInput): Promise<GitProfile> {
-    const profiles = await this.list();
-    const index = profiles.findIndex(p => p.id === id);
-    if (index === -1) {
+    this.ensureCache();
+    const current = this.idMap.get(id);
+    if (!current) {
       throw new Error(`Profile with ID "${id}" not found`);
     }
 
-    const current = profiles[index];
+    if (input.name && !Validation.isValidProfileName(input.name)) {
+      throw new Error(`Invalid profile name: "${input.name}"`);
+    }
+    if (input.git?.name !== undefined && (input.git.name.length > 128 || input.git.name.trim().length === 0)) {
+      throw new Error(`Invalid git author name: "${input.git.name}"`);
+    }
+    if (input.git?.email !== undefined && !Validation.isValidEmail(input.git.email)) {
+      throw new Error(`Invalid git author email: "${input.git.email}"`);
+    }
+    if (input.folderRules) {
+      for (const rule of input.folderRules) {
+        if (!Validation.isValidFolderRule(rule)) {
+          throw new Error(`Invalid folder rule pattern: "${rule}"`);
+        }
+      }
+    }
 
     if (input.name && input.name.toLowerCase() !== current.name.toLowerCase()) {
-      const duplicate = profiles.find(
-        p => p.id !== id && p.name.toLowerCase() === input.name?.toLowerCase()
-      );
-      if (duplicate) {
+      const duplicate = this.nameMap.get(input.name.toLowerCase());
+      if (duplicate && duplicate.id !== id) {
         throw new Error(`Profile with name "${input.name}" already exists`);
       }
     }
@@ -217,25 +272,36 @@ export class PersistentProfileStore implements ProfileStore {
       updatedAt: new Date().toISOString(),
     };
 
-    profiles[index] = updated;
-    await this.memento.update(PersistentProfileStore.PROFILES_KEY, profiles);
+    const index = this.cachedProfiles!.findIndex(p => p.id === id);
+    if (index !== -1) {
+      this.cachedProfiles![index] = updated;
+    }
+    this.idMap.set(id, updated);
+    if (current.name.toLowerCase() !== updated.name.toLowerCase()) {
+      this.nameMap.delete(current.name.toLowerCase());
+    }
+    this.nameMap.set(updated.name.toLowerCase(), updated);
+
+    await this.memento.update(PersistentProfileStore.PROFILES_KEY, this.cachedProfiles);
     return updated;
   }
 
   public async delete(id: ProfileId): Promise<void> {
-    let profiles = await this.list();
-    const exists = profiles.some(p => p.id === id);
-    if (!exists) {
+    this.ensureCache();
+    const current = this.idMap.get(id);
+    if (!current) {
       return;
     }
 
-    profiles = profiles.filter(p => p.id !== id);
-    await this.memento.update(PersistentProfileStore.PROFILES_KEY, profiles);
+    this.idMap.delete(id);
+    this.nameMap.delete(current.name.toLowerCase());
+    this.cachedProfiles = this.cachedProfiles!.filter(p => p.id !== id);
+    await this.memento.update(PersistentProfileStore.PROFILES_KEY, this.cachedProfiles);
 
     // If active profile was deleted, switch to first remaining or clear
     const active = await this.getActive();
     if (active && active.id === id) {
-      const nextActive = profiles[0]?.id;
+      const nextActive = this.cachedProfiles[0]?.id;
       await this.memento.update(PersistentProfileStore.ACTIVE_PROFILE_KEY, nextActive);
     }
 
@@ -249,6 +315,7 @@ export class PersistentProfileStore implements ProfileStore {
       }
     }
     if (modified) {
+      this.associationsCache = associations;
       await this.memento.update(PersistentProfileStore.ASSOCIATIONS_KEY, associations);
     }
   }
@@ -262,19 +329,15 @@ export class PersistentProfileStore implements ProfileStore {
     await this.memento.update(PersistentProfileStore.ACTIVE_PROFILE_KEY, id);
 
     // Update lastUsedAt
-    const profiles = await this.list();
-    const idx = profiles.findIndex(p => p.id === id);
-    if (idx !== -1) {
-      profiles[idx].metadata.lastUsedAt = new Date().toISOString();
-      await this.memento.update(PersistentProfileStore.PROFILES_KEY, profiles);
-    }
+    profile.metadata.lastUsedAt = new Date().toISOString();
+    await this.memento.update(PersistentProfileStore.PROFILES_KEY, this.cachedProfiles);
   }
 
   public async getActive(): Promise<GitProfile | undefined> {
     const activeId = this.memento.get<string | undefined>(PersistentProfileStore.ACTIVE_PROFILE_KEY);
     if (!activeId) {
-      const profiles = await this.list();
-      return profiles[0];
+      this.ensureCache();
+      return this.cachedProfiles![0];
     }
     return this.get(activeId);
   }
@@ -314,6 +377,7 @@ export class PersistentProfileStore implements ProfileStore {
       }
     }
     associations[key] = profileId;
+    this.associationsCache = associations;
     await this.memento.update(PersistentProfileStore.ASSOCIATIONS_KEY, associations);
   }
 
@@ -328,11 +392,15 @@ export class PersistentProfileStore implements ProfileStore {
         }
       }
     }
+    this.associationsCache = associations;
     await this.memento.update(PersistentProfileStore.ASSOCIATIONS_KEY, associations);
   }
 
   public async getAllAssociations(): Promise<Record<string, ProfileId>> {
-    const raw = this.memento.get<Record<string, ProfileId>>(PersistentProfileStore.ASSOCIATIONS_KEY, {});
-    return typeof raw === 'object' && raw !== null ? { ...raw } : {};
+    if (!this.associationsCache) {
+      const raw = this.memento.get<Record<string, ProfileId>>(PersistentProfileStore.ASSOCIATIONS_KEY, {});
+      this.associationsCache = typeof raw === 'object' && raw !== null ? { ...raw } : {};
+    }
+    return { ...this.associationsCache };
   }
 }

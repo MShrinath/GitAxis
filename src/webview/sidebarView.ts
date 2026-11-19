@@ -524,7 +524,7 @@ export class SidebarViewProvider implements vscode.WebviewViewProvider {
 
     const baseFields = this.toProfileGitFields(data);
     let gh = this.extractGitHubIdentity(data);
-    const patVal = typeof data.pat === 'string' ? data.pat.trim() : undefined;
+    const patVal = typeof data.pat === 'string' ? data.pat.trim().replace(/^["']|["']$/g, '').trim() : undefined;
 
     if (!gh && this.accountVerifier) {
       try {
@@ -582,7 +582,7 @@ export class SidebarViewProvider implements vscode.WebviewViewProvider {
     if (!data || typeof data !== 'object' || typeof data.name !== 'string' || typeof data.gitName !== 'string' || typeof data.gitEmail !== 'string') {
       return 'Profile Name, Git Author Name, and Git Email are required.';
     }
-    if (data.name.length > 64 || data.gitName.length > 128 || data.gitEmail.length > 256) {
+    if (data.name.length > 64 || data.gitName.length > 128 || data.gitEmail.length > 256 || (typeof data.pat === 'string' && data.pat.length > 512)) {
       return 'Input exceeds maximum allowed length.';
     }
     if (!Validation.isValidProfileName(data.name)) {

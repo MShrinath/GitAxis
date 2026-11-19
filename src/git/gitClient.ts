@@ -111,14 +111,16 @@ export class GitClient {
         (err, stdout, stderr) => {
           if (err) {
             const e = err as any;
-            const message = stderr?.trim() || stdout?.trim() || e.message;
+            const sanitizedStderr = Validation.sanitizeUrl(stderr?.trim() || '');
+            const sanitizedStdout = Validation.sanitizeUrl(stdout?.trim() || '');
+            const message = sanitizedStderr || sanitizedStdout || e.message;
             return reject(
               new GitProcessError(Validation.sanitizeUrl(message), {
                 code: e.code,
                 killed: e.killed,
                 signal: e.signal,
-                stdout: stdout?.trim(),
-                stderr: stderr?.trim(),
+                stdout: sanitizedStdout,
+                stderr: sanitizedStderr,
               })
             );
           }
@@ -143,6 +145,9 @@ export class GitClient {
   }
 
   public async getCredentialHelperForUrl(url: string, cwd?: string): Promise<string> {
+    if (!url || url.trim().startsWith('-') || !Validation.isValidGitUrl(url)) {
+      return this.getCredentialHelper(cwd);
+    }
     try {
       const { stdout } = await this.exec(['config', '--get-urlmatch', 'credential.helper', url], { cwd });
       const trimmed = stdout.trim();
@@ -643,13 +648,17 @@ export class GitClient {
   }
 
   public async init(repoPath: string, bare?: boolean, options?: GitExecOptions): Promise<void> {
+    if (!repoPath || repoPath.trim().startsWith('-')) {
+      throw new Error(`Invalid repository path: "${repoPath}"`);
+    }
     const args = ['init'];
     if (bare) args.push('--bare');
-    args.push(repoPath);
+    args.push('--', repoPath);
     await this.exec(args, options);
   }
 
   public async getConfig(repoPath: string, key: string): Promise<string | undefined> {
+    if (!key || key.trim().startsWith('-')) return undefined;
     try {
       const { stdout } = await this.exec(['config', '--get', key], { cwd: repoPath });
       return stdout || undefined;
@@ -659,6 +668,7 @@ export class GitClient {
   }
 
   public async getLocalConfig(repoPath: string, key: string): Promise<string | undefined> {
+    if (!key || key.trim().startsWith('-')) return undefined;
     try {
       const { stdout } = await this.exec(['config', '--local', '--get', key], { cwd: repoPath });
       return stdout || undefined;
@@ -668,10 +678,14 @@ export class GitClient {
   }
 
   public async setLocalConfig(repoPath: string, key: string, value: string): Promise<void> {
+    if (!key || key.trim().startsWith('-')) {
+      throw new Error(`Invalid git config key: "${key}"`);
+    }
     await this.exec(['config', '--local', key, value], { cwd: repoPath });
   }
 
   public async unsetLocalConfig(repoPath: string, key: string): Promise<void> {
+    if (!key || key.trim().startsWith('-')) return;
     try {
       await this.exec(['config', '--local', '--unset-all', key], { cwd: repoPath });
     } catch {
@@ -680,6 +694,7 @@ export class GitClient {
   }
 
   public async getGlobalConfig(key: string): Promise<string | undefined> {
+    if (!key || key.trim().startsWith('-')) return undefined;
     try {
       const { stdout } = await this.exec(['config', '--global', '--get', key]);
       return stdout || undefined;
@@ -689,10 +704,14 @@ export class GitClient {
   }
 
   public async setGlobalConfig(key: string, value: string): Promise<void> {
+    if (!key || key.trim().startsWith('-')) {
+      throw new Error(`Invalid git config key: "${key}"`);
+    }
     await this.exec(['config', '--global', key, value]);
   }
 
   public async unsetGlobalConfig(key: string): Promise<void> {
+    if (!key || key.trim().startsWith('-')) return;
     try {
       await this.exec(['config', '--global', '--unset-all', key]);
     } catch {
