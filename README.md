@@ -72,7 +72,7 @@ GitAxis gives you a dedicated management layer right inside VS Code:
 ## Architecture & Workflow
 
 <p align="center">
-  <img alt="GitAxis Architecture and Workflow" src="media/workflow.svg" width="100%" />
+  <img alt="GitAxis Architecture and Workflow" src="media/workflow.png" width="100%" />
 </p>
 
 GitAxis operates as an automated control layer between your developer workflow, VS Code Source Control, operating system credential stores, and Git repositories:
